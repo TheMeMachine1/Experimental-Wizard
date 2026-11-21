@@ -34,30 +34,40 @@ empty = {"color": (30,30,60), "interaction": "nothing", "background":True}
 gravitycircle = {"color": (100, 0, 100), "interaction": "force", "background":True}
 windcircle = {"color": (180,200,255), "interaction": "force", "background":True}
 blackholew = {"color": (0,0,0), "interaction": "force", "background":True}
+acid = {"color": (50, 255, 50), "move": "liquid", "background":False, "lifespam":"none", "interactionamount":0,
+           "density": 2}
 steam = {"color": (90, 90, 90), "move": "liquid", "background":False, "lifespam":"none", "interactionamount":0,
            "density": -1}
 obsidian = {"color": (10, 10, 10), "move": "solid", "background":False, "lifespam":"none", "interactionamount":0,
            "density": 10}
-air = {"color": (30, 30, 60), "move": "nothing", "background":False, "lifespam":"none", "interactionamount":0,
+bluesand = {"color": (140, 90, 255), "move": "powder", "background":False, "lifespam":"none", "interactionamount":0,
+           "density": 2}
+buble = {"color": (100, 100, 200), "move": "all", "background":False, "lifespam":30, "dieout":air, "interactionamount":0,
+           "density": -0.1}
+air = {"color": (30, 30, 60), "move": "nothing", "background":False, "lifespam":"none", "interactionamount":1, "interactiontype1":[bluesand,buble,bluesand],
            "density": 0}
-fire = {"color": (200, 50, 0), "move": "all", "background":False, "lifespam":300, "dieout":air, "interactionamount":0,
-           "density": 0.1}
 water = {"color": (0, 0, 255), "move": "liquid", "background":False, "lifespam":"none", "interactionamount":0,
            "density": 1}
+fire = {"color": (200, 50, 0), "move": "all", "background":False, "lifespam":240, "dieout":air, "interactionamount":1, "interactiontype1":[buble,air,air], "interactiontype1":[water,steam,air],
+           "density": -0.1}
 lava = {"color": (255, 0, 0), "move": "liquid", "background":False, "lifespam":"none", "interactionamount":1, "interactiontype1":[water,steam,obsidian],
            "density": 3}
+greensand = {"color": (90, 255, 140), "move": "powder", "background":False, "lifespam":"none", "interactionamount":0,
+           "density": 2}
 redsand = {"color": (255, 140, 90), "move": "powder", "background":False, "lifespam":"none", "interactionamount":0,
            "density": 2}
-magicpowder = {"color": (200, 200, 255), "move": "powder", "background":False, "lifespam":"none", "interactionamount":1, "interactiontype1":[lava,redsand,air],
+magicpowder = {"color": (200, 200, 255), "move": "powder", "background":False, "lifespam":"none", "interactionamount":3, "interactiontype1":[lava,redsand,air],  "interactiontype2":[acid,greensand,air],  "interactiontype3":[water,bluesand,air],
            "density": 2}
 magic = {"color": (50, 50, 80), "move": "random", "background":False, "lifespam":"none", "interactionamount":2, "interactiontype1":[lava,fire,lava], "interactiontype2":[fire,fire,fire],
            "density": 0.1}
-rock = {"color": (150, 150, 150), "move": "solid", "background":False, "lifespam":"none", "interactionamount":0,
+rock = {"color": (150, 150, 150), "move": "solid", "background":False, "lifespam":"none", "interactionamount":1, "interactiontype1":[acid,acid,air],
            "density": 10}
-ice = {"color": (100, 100, 240), "move": "solid", "background":False, "lifespam":"none", "interactionamount":1, "interactiontype1":[steam,water,water],
+ice = {"color": (100, 100, 240), "move": "solid", "background":False, "lifespam":"none", "interactionamount":2, "interactiontype1":[steam,water,water], "interactiontype2":[acid,air,water],
            "density": 10}
-scrollist = [air,water,lava,magicpowder,rock,fire,magic,empty,gravitycircle,windcircle,blackholew]
-scrollnames = ["Eraser","Water","Lava","Magic powder","Rock","Fire","Magic","Erase circle","Gravity","Wind","Black hole"]
+quake = {"color": (80, 80, 80), "move": "random", "background":False, "lifespam":300, "dieout":magicpowder, "interactionamount":0,
+           "density": 11}
+scrollist = [air,water,lava,magicpowder,rock,fire,acid,empty,gravitycircle,windcircle,blackholew]
+scrollnames = ["Eraser","Water","Lava","Magic powder","Rock","Fire","Quake","Erase circle","Gravity","Wind","Black hole"]
 font = pygame.font.Font(None, 22)
 labels = [font.render(name, True, white) for name in scrollnames]
 listsize = 11 #(pixelsize * ypixframe - 80) // 40
@@ -192,6 +202,9 @@ def updatecountgrid():
             if count > 0:
                 countgrid[xpaint][ypaint] = count-1
 
+def decifertype(send):
+    for items in 
+
 def interactionrun(xpaint,ypaint,xlocation,ylocation):
     pixel= grid[xpaint][ypaint]
     otherpixel=grid[xlocation][ylocation]
@@ -199,11 +212,14 @@ def interactionrun(xpaint,ypaint,xlocation,ylocation):
     if amount > 0:
         for list in range(amount):
             interaction = pixel.get(interactionlist[list])
-            if otherpixel == interaction[0]:
-                grid[xpaint][ypaint]=interaction[1]
+            send = interaction[0]
+            if otherpixel == decifertype(send):
+                send = interaction[1]
+                grid[xpaint][ypaint]=decifertype(send)
                 if interaction[1].get("lifespam") != "none":
                     countgrid[xpaint][ypaint] = interaction[1].get("lifespam")
-                grid[xlocation][ylocation]=interaction[2]
+                send = interaction[2]
+                grid[xlocation][ylocation]=decifertype(send)
                 if interaction[2].get("lifespam") != "none":
                     countgrid[xlocation][ylocation] = interaction[2].get("lifespam")
                 return True
@@ -211,11 +227,14 @@ def interactionrun(xpaint,ypaint,xlocation,ylocation):
     if amount > 0:
         for list in range(amount):
             interaction = otherpixel.get(interactionlist[list])
-            if pixel == interaction[0]:
-                grid[xpaint][ypaint]=interaction[1]
+            send = interaction[0]
+            if pixel == decifertype(send):
+                send = interaction[1]
+                grid[xpaint][ypaint]=decifertype(send)
                 if interaction[1].get("lifespam") != "none":
                     countgrid[xpaint][ypaint] = interaction[1].get("lifespam")
-                grid[xlocation][ylocation]=interaction[2]
+                send = interaction[2]
+                grid[xlocation][ylocation]=decifertype(send)
                 if interaction[2].get("lifespam") != "none":
                     countgrid[xlocation][ylocation] = interaction[2].get("lifespam")
                 return True
