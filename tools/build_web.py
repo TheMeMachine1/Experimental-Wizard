@@ -22,6 +22,7 @@ def main():
     shutil.rmtree(STAGE, ignore_errors=True)
     os.makedirs(os.path.join(STAGE, "music"))
     shutil.copy(os.path.join(ROOT, "example.py"), os.path.join(STAGE, "main.py"))  # pygbag starts main.py
+    shutil.copy(os.path.join(ROOT, "music.py"), os.path.join(STAGE, "music.py"))
     shutil.copytree(os.path.join(ROOT, "sounds"), os.path.join(STAGE, "sounds"))
     for style in WEBSTYLES:
         shutil.copytree(os.path.join(ROOT, "music", style), os.path.join(STAGE, "music", style))
