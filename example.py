@@ -356,15 +356,64 @@ def interactionrun(xpaint,ypaint,xlocation,ylocation):
                 return True
     return False
 
+# ---------- material panel: category tabs ----------
+# Each palette item goes under a tab worked out from what it is (see categoryof), so a new
+# material added to scrollist lands in the right tab by itself. The Eraser is always shown.
+categories = ["Liquids", "Powders", "Solids", "Energy", "Forces"]
+currenttab = "Liquids"
+tabw, tabh = 62, 22      # tab button size
+tabgap = 5               # space between tab buttons
+tabfont = pygame.font.Font(None, 20)
+tablabels = {name: tabfont.render(name, True, white) for name in categories}
+
+def categoryof(material):
+    if material.get("background"):
+        return "Forces"
+    return {"liquid": "Liquids", "powder": "Powders", "solid": "Solids"}.get(material.get("move"), "Energy")
+
+def tabrect(k):
+    # tab buttons sit in rows of three at the top of the panel
+    return pygame.Rect(panelx + (k % 3) * (tabw + tabgap), paneltop + (k // 3) * (tabh + tabgap), tabw, tabh)
+
+def visiblerows():
+    # (index into scrollist, y) for every row shown right now. Drawing AND clicking both use this,
+    # so what you see is always what you click.
+    rows = []
+    y = paneltop + 2 * (tabh + tabgap) + 10
+    if air in scrollist:
+        rows.append((scrollist.index(air), y))  # the Eraser, always there
+        y += rowgap
+    lastrow = volumey["music"] - 45            # stop before the volume sliders
+    for i, material in enumerate(scrollist):
+        if material is not air and categoryof(material) == currenttab and y + boxsize <= lastrow:
+            rows.append((i, y))
+            y += rowgap
+    return rows
+
+def picktab(mx, my):
+    # if a tab was clicked, switch to it (returns True)
+    global currenttab
+    for k, name in enumerate(categories):
+        if tabrect(k).collidepoint(mx, my) and name != currenttab:
+            currenttab = name
+            return True
+    return False
+
 def drawpanel(selected, brush):
     pygame.draw.rect(screen,background,(panelx - 8,0,xframe - panelx + 8,yframe))  # -8 so the old highlight outline gets cleared too
-    for listmaker in range(listsize):
-        rowy = paneltop + listmaker*rowgap
-        if scrollist[listmaker] is selected:
+    for k, name in enumerate(categories):
+        rect = tabrect(k)
+        pygame.draw.rect(screen, (70, 70, 130) if name == currenttab else (40, 40, 75), rect, border_radius=5)
+        # yellow outline: the tab you're looking at; yellow text: the tab your selected material is in
+        pygame.draw.rect(screen, yellow if name == currenttab else gray, rect, 1, border_radius=5)
+        label = tablabels[name] if name != categoryof(selected) or selected is air else tabfont.render(name, True, yellow)
+        screen.blit(label, label.get_rect(center=rect.center))
+    for i, rowy in visiblerows():
+        if scrollist[i] is selected:
             pygame.draw.rect(screen,yellow,(panelx - 4,rowy - 4,xframe - border - panelx + 8,boxsize + 8),2)
         pygame.draw.rect(screen,white,(panelx,rowy,boxsize,boxsize))
-        pygame.draw.rect(screen,scrollist[listmaker].get("color"),(panelx + 1,rowy + 1,boxsize - 2,boxsize - 2))
-        screen.blit(labels[listmaker],(panelx + boxsize + 8,rowy + 2))
+        pygame.draw.rect(screen,scrollist[i].get("color"),(panelx + 1,rowy + 1,boxsize - 2,boxsize - 2))
+        screen.blit(labels[i],(panelx + boxsize + 8,rowy + 2))
     drawvolume("music", "Music", musicvolume)
     drawvolume("effects", "Effects", effectsvolume)
     screen.blit(font.render("Brush size: " + str(brush),True,white),(panelx,slidery - 25))
@@ -390,10 +439,9 @@ def volumeclick(mx, my):
 
 def picksubtype(mx, my):
     if panelx <= mx <= xframe - border:
-        for listmaker in range(listsize):
-            rowy = paneltop + listmaker*rowgap
+        for i, rowy in visiblerows():
             if rowy <= my <= rowy + boxsize:
-                return scrollist[listmaker]
+                return scrollist[i]
     return False
 
 def brushsize(mx,my):
@@ -1133,6 +1181,8 @@ async def main():
             mx = (mouse_pos[0])
             my = (mouse_pos[1])
             replacetype = substaince
+            if not wasdown and picktab(mx, my):
+                playsound("click")
             mightsubstaince = picksubtype(mx,my)
             if mightsubstaince != False:
                 if mightsubstaince is not substaince:
