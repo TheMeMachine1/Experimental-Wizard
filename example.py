@@ -313,7 +313,7 @@ def updategrid(flipscreen):
         for ypixnum in range (ypixframe):
             if flipscreen == 0:
                 xpaint=xpixnum
-                ypaint=ypixnum
+                ypaint=ypixframe-1-ypixnum
             else:
                 xpaint=xpixframe-1-xpixnum
                 ypaint=ypixframe-1-ypixnum
