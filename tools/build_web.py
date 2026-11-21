@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 
+GAMEFILES = ["music.py", "audio.py", "display.py", "panel.py", "welcome.py"]
 WEBSTYLES = ["arcane", "alchemy"]  # music styles to include on the web (each is ~4 MB)
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 STAGE = os.path.join(ROOT, "build_web", "ExperimentalWizard")
@@ -22,7 +23,8 @@ def main():
     shutil.rmtree(STAGE, ignore_errors=True)
     os.makedirs(os.path.join(STAGE, "music"))
     shutil.copy(os.path.join(ROOT, "example.py"), os.path.join(STAGE, "main.py"))  # pygbag starts main.py
-    shutil.copy(os.path.join(ROOT, "music.py"), os.path.join(STAGE, "music.py"))
+    for part in GAMEFILES:  # the game's other source files sit next to main.py
+        shutil.copy(os.path.join(ROOT, part), os.path.join(STAGE, part))
     shutil.copytree(os.path.join(ROOT, "sounds"), os.path.join(STAGE, "sounds"))
     for style in WEBSTYLES:
         shutil.copytree(os.path.join(ROOT, "music", style), os.path.join(STAGE, "music", style))
