@@ -95,12 +95,18 @@ coal = {"color": (40, 40, 40), "move": "powder", "background":False, "lifespam":
            "density": 3}
 acidicsteam = {"color": (30, 200, 30), "move": "liquid", "background":False, "lifespam":300, "dieout":"acid", "interactionamount":1,  "interactiontype1":["rock","acid","air"],
            "density": -1}
-scrollist = [air,water,lava,magicpowder,rock,fire,acid,empty,gravitycircle,windcircle,blackholew]
-scrollnames = ["Eraser","Water","Lava","Magic powder","Rock","Fire","acid","Erase circle","Gravity","Wind","Black hole"]
 materials = {"air":air, "acid":acid, "steam":steam, "obsidian":obsidian, "bluesand":bluesand,"buble":buble,"water":water,"fire":fire,"lava":lava,"greensand":greensand,"redsand":redsand,"magicpowder":magicpowder,"magic":magic,"rock":rock,"ice":ice,"quake":quake,"wood":wood,"life":life,"coal":coal,"acidicsteam":acidicsteam}
+# ---------- the palette ----------
+# Every material in `materials` shows up in the side panel by itself, under the tab that fits what
+# it is (see panel.categoryof). To add a material: define it, put it in `materials`, done.
+# Panel names come from the key; nicenames only fixes ones that need spaces or a different word.
+nicenames = {"air": "Eraser", "magicpowder": "Magic powder", "bluesand": "Blue sand", "greensand": "Green sand",
+             "redsand": "Red sand", "acidicsteam": "Acidic steam", "buble": "Bubble"}
+forces = [(empty, "Erase circle"), (gravitycircle, "Gravity"), (windcircle, "Wind"), (blackholew, "Black hole")]  # background circles
+scrollist = list(materials.values()) + [circle for circle, name in forces]
+scrollnames = [nicenames.get(key, key.capitalize()) for key in materials] + [name for circle, name in forces]
 font = pygame.font.Font(None, 22)
 labels = [font.render(name, True, white) for name in scrollnames]
-listsize = 11 #(pixelsize * ypixframe - 80) // 40
 interactionlist = ["interactiontype1","interactiontype2","interactiontype3","interactiontype4","interactiontype5","interactiontype6","interactiontype7"]
 
 running = True

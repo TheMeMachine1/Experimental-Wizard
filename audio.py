@@ -189,12 +189,16 @@ def setpaintloop(name):
 
 
 def paintsoundfor(material):
+    # a few materials have their own sound; everything else gets one that fits what kind it is
+    if material is g.air: return None  # eraser is silent
     if material is g.water: return "water"
     if material is g.lava: return "lava"
     if material is g.fire: return "fire"
     if material is g.magic: return "magic"
-    if material is g.magicpowder or material is g.rock: return "powder"
-    return None  # eraser is silent
+    move = material.get("move")
+    if move == "liquid": return "water"
+    if move in ("powder", "solid"): return "powder"
+    return None
 
 
 sizzlechannel = None

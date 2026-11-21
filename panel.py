@@ -2,7 +2,7 @@
 The side panel: material tabs, the material list, the volume sliders and the brush slider.
 
 Each palette item goes under a tab worked out from what it is (see categoryof), so a new
-material added to scrollist in example.py lands in the right tab by itself.
+material added to `materials` in example.py shows up in the right tab by itself.
 
 `g` is a link to the game (example.py); g.something is always the game's current value.
 """
