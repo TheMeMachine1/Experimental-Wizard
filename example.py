@@ -158,7 +158,7 @@ air = {"color": (30, 30, 60), "move": "nothing", "background":False, "lifespam":
            "density": 0}
 water = {"color": (0, 0, 255), "move": "liquid", "background":False, "lifespam":"none", "interactionamount":0,
            "density": 1}
-fire = {"color": (200, 50, 0), "move": "all", "background":False, "lifespam":30, "dieout":"air", "interactionamount":1, "interactiontype1":["buble","air","air"], "interactiontype1":["water","steam","air"],
+fire = {"color": (200, 50, 0), "move": "all", "background":False, "lifespam":30, "dieout":"air", "interactionamount":2, "interactiontype1":["buble","air","air"], "interactiontype2":["water","steam","air"],
            "density": -0.1}
 lava = {"color": (255, 0, 0), "move": "liquid", "background":False, "lifespam":"none", "interactionamount":1, "interactiontype1":["water","steam","obsidian"],
            "density": 3}
@@ -178,7 +178,7 @@ ice = {"color": (100, 100, 240), "move": "solid", "background":False, "lifespam"
            "density": 10}
 quake = {"color": (80, 80, 80), "move": "random", "background":False, "lifespam":300, "dieout":"magicpowder", "interactionamount":0,
            "density": 11}
-coal = {"color": (40, 40, 40), "move": "powder", "background":False, "lifespam":"none", "interactionamount":2, "interactiontype1":["fire","fire","acidicsteam"], "interactiontype1":["lava","fire","acidicsteam"],
+coal = {"color": (40, 40, 40), "move": "powder", "background":False, "lifespam":"none", "interactionamount":2, "interactiontype1":["fire","fire","acidicsteam"], "interactiontype2":["lava","fire","acidicsteam"],
            "density": 3}
 acidicsteam = {"color": (30, 200, 30), "move": "liquid", "background":False, "lifespam":300, "dieout":"acid", "interactionamount":1,  "interactiontype1":["rock","acid","air"],
            "density": -1}
