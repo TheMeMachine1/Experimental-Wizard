@@ -152,11 +152,13 @@ bluesand = {"color": (140, 90, 255), "move": "powder", "background":False, "life
            "density": 2}
 buble = {"color": (100, 100, 200), "move": "all", "background":False, "lifespam":30, "dieout":"air", "interactionamount":0,
            "density": -0.1}
-air = {"color": (30, 30, 60), "move": "nothing", "background":False, "lifespam":"none", "interactionamount":1, "interactiontype1":["bluesand","buble","bluesand"],
+life = {"color": (50, 200, 50), "move": "all", "background":False, "lifespam":30, "dieout":"air", "interactionamount":2, "interactiontype1":["fire","fire","air"], "interactiontype2":["lava","lava","air"],
+           "density": -0.1}
+air = {"color": (30, 30, 60), "move": "nothing", "background":False, "lifespam":"none", "interactionamount":3, "interactiontype1":["bluesand","buble","bluesand"], "interactiontype2":["redsand","fire","redsand"], "interactiontype3":["greensand","life","greensand"],
            "density": 0}
 water = {"color": (0, 0, 255), "move": "liquid", "background":False, "lifespam":"none", "interactionamount":0,
            "density": 1}
-fire = {"color": (200, 50, 0), "move": "all", "background":False, "lifespam":240, "dieout":"air", "interactionamount":1, "interactiontype1":["buble","air","air"], "interactiontype1":["water","steam","air"],
+fire = {"color": (200, 50, 0), "move": "all", "background":False, "lifespam":30, "dieout":"air", "interactionamount":1, "interactiontype1":["buble","air","air"], "interactiontype1":["water","steam","air"],
            "density": -0.1}
 lava = {"color": (255, 0, 0), "move": "liquid", "background":False, "lifespam":"none", "interactionamount":1, "interactiontype1":["water","steam","obsidian"],
            "density": 3}
@@ -166,21 +168,27 @@ redsand = {"color": (255, 140, 90), "move": "powder", "background":False, "lifes
            "density": 2}
 magicpowder = {"color": (200, 200, 255), "move": "powder", "background":False, "lifespam":"none", "interactionamount":3, "interactiontype1":["lava","redsand","air"],  "interactiontype2":["acid","greensand","air"],  "interactiontype3":["water","bluesand","air"],
            "density": 2}
-magic = {"color": (50, 50, 80), "move": "random", "background":False, "lifespam":"none", "interactionamount":2, "interactiontype1":["lava","fire","lava"], "interactiontype2":["fire","fire","fire"],
+magic = {"color": (50, 50, 80), "move": "random", "background":False, "lifespam":"none", "interactionamount":3, "interactiontype1":["lava","fire","lava"], "interactiontype2":["fire","fire","fire"], "interactiontype3":["buble","water","buble"], "interactiontype4":["quake","quake","quake"],
            "density": 0.1}
-rock = {"color": (150, 150, 150), "move": "solid", "background":False, "lifespam":"none", "interactionamount":1, "interactiontype1":["acid","acid","air"],
+wood = {"color": (150, 75, 0), "move": "solid", "background":False, "lifespam":"none", "interactionamount":2, "interactiontype1":["acid","life","life"], "interactiontype2":["fire","fire","coal"],
+           "density": 10}
+rock = {"color": (150, 150, 150), "move": "solid", "background":False, "lifespam":"none", "interactionamount":2, "interactiontype1":["acid","acid","air"], "interactiontype2":["life","wood","rock"],
            "density": 10}
 ice = {"color": (100, 100, 240), "move": "solid", "background":False, "lifespam":"none", "interactionamount":2, "interactiontype1":["steam","water","water"], "interactiontype2":["acid","air","water"],
            "density": 10}
 quake = {"color": (80, 80, 80), "move": "random", "background":False, "lifespam":300, "dieout":"magicpowder", "interactionamount":0,
            "density": 11}
+coal = {"color": (40, 40, 40), "move": "powder", "background":False, "lifespam":"none", "interactionamount":2, "interactiontype1":["fire","fire","acidicsteam"], "interactiontype1":["lava","fire","acidicsteam"],
+           "density": 3}
+acidicsteam = {"color": (30, 200, 30), "move": "liquid", "background":False, "lifespam":300, "dieout":"acid", "interactionamount":1,  "interactiontype1":["rock","acid","air"],
+           "density": -1}
 scrollist = [air,water,lava,magicpowder,rock,fire,acid,empty,gravitycircle,windcircle,blackholew]
-scrollnames = ["Eraser","Water","Lava","Magic powder","Rock","Fire","Quake","Erase circle","Gravity","Wind","Black hole"]
-materials = {"air":air, "acid":acid, "steam":steam, "obsidian":obsidian, "bluesand":bluesand,"buble":buble,"water":water,"fire":fire,"lava":lava,"greensand":greensand,"redsand":redsand,"magicpowder":magicpowder,"magic":magic,"rock":rock,"ice":ice,"quake":quake}
+scrollnames = ["Eraser","Water","Lava","Magic powder","Rock","Fire","acid","Erase circle","Gravity","Wind","Black hole"]
+materials = {"air":air, "acid":acid, "steam":steam, "obsidian":obsidian, "bluesand":bluesand,"buble":buble,"water":water,"fire":fire,"lava":lava,"greensand":greensand,"redsand":redsand,"magicpowder":magicpowder,"magic":magic,"rock":rock,"ice":ice,"quake":quake,"wood":wood,"life":life,"coal":coal,"acidicsteam":acidicsteam}
 font = pygame.font.Font(None, 22)
 labels = [font.render(name, True, white) for name in scrollnames]
 listsize = 11 #(pixelsize * ypixframe - 80) // 40
-interactionlist = ["interactiontype1","interactiontype2","interactiontype3","interactiontype4"]
+interactionlist = ["interactiontype1","interactiontype2","interactiontype3","interactiontype4","interactiontype5","interactiontype6","interactiontype7"]
 
 running = True
 interactions = 0  # material reactions this frame (drives the music)
