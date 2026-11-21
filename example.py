@@ -12,6 +12,14 @@ border = 15
 controlsb = 200
 xframe = pixelsize * xpixframe + border * 2 + controlsb
 yframe = pixelsize * ypixframe + border * 2
+# right-side panel layout (drawing and click checks both use these)
+panelx = pixelsize * xpixframe + border * 2   # left edge of the panel
+paneltop = border + 10                        # y of the first material row
+rowgap = 40                                   # distance between material rows
+boxsize = 17                                  # material swatch size
+slidery = border + pixelsize * ypixframe      # y of the brush slider
+sliderend = xframe - 20                       # right end of the brush slider
+notch = 7                                     # slider pixels per brush step
 brush = 1
 flipscreen = 0
 screen = pygame.display.set_mode((xframe, yframe))
@@ -48,6 +56,9 @@ rock = {"color": (150, 150, 150), "move": "solid", "background":False, "lifespam
 ice = {"color": (100, 100, 240), "move": "solid", "background":False, "lifespam":"none", "interactionamount":1, "interactiontype1":[steam,water,water],
            "density": 10}
 scrollist = [air,water,lava,magicpowder,rock,fire,magic,empty,gravitycircle,windcircle,blackholew]
+scrollnames = ["Eraser","Water","Lava","Magic powder","Rock","Fire","Magic","Erase circle","Gravity","Wind","Black hole"]
+font = pygame.font.Font(None, 22)
+labels = [font.render(name, True, white) for name in scrollnames]
 listsize = 11 #(pixelsize * ypixframe - 80) // 40
 interactionlist = ["interactiontype1","interactiontype2","interactiontype3","interactiontype4"]
 
@@ -209,28 +220,31 @@ def interactionrun(xpaint,ypaint,xlocation,ylocation):
                 return True
     return False
 
-def borderstart ():
-    pygame.draw.line(screen,gray,(pixelsize * xpixframe + border * 2,border+pixelsize*ypixframe),(xframe - 20,border+pixelsize*ypixframe),3)
-    pygame.draw.rect(screen,white,(pixelsize * xpixframe + border * 2 + 7, border+pixelsize*ypixframe-3,7,7))
+def drawpanel(selected, brush):
+    pygame.draw.rect(screen,background,(panelx,0,xframe - panelx,yframe))
     for listmaker in range(listsize):
-        pygame.draw.rect(screen,white,(pixelsize * xpixframe + border * 2,border + 10 + listmaker*40,17,17))
-        pygame.draw.rect(screen,scrollist[listmaker].get("color"),(pixelsize * xpixframe + border * 2 + 1,border + 11 + listmaker*40,15,15))
+        rowy = paneltop + listmaker*rowgap
+        if scrollist[listmaker] is selected:
+            pygame.draw.rect(screen,yellow,(panelx - 4,rowy - 4,xframe - border - panelx + 8,boxsize + 8),2)
+        pygame.draw.rect(screen,white,(panelx,rowy,boxsize,boxsize))
+        pygame.draw.rect(screen,scrollist[listmaker].get("color"),(panelx + 1,rowy + 1,boxsize - 2,boxsize - 2))
+        screen.blit(labels[listmaker],(panelx + boxsize + 8,rowy + 2))
+    screen.blit(font.render("Brush size: " + str(brush),True,white),(panelx,slidery - 25))
+    pygame.draw.line(screen,gray,(panelx,slidery),(sliderend,slidery),3)
+    pygame.draw.rect(screen,white,(panelx + notch*brush,slidery - 3,notch,notch))
 
 def picksubtype(mx, my):
-    if pixelsize * xpixframe + border * 2 <= mx <= pixelsize * xpixframe + border * 2 + 17:
+    if panelx <= mx <= xframe - border:
         for listmaker in range(listsize):
-            if border + 10 + listmaker*40 <= my <= border + 10 + listmaker*40 + 17:
+            rowy = paneltop + listmaker*rowgap
+            if rowy <= my <= rowy + boxsize:
                 return scrollist[listmaker]
     return False
 
-def brushsize(mx,my,brush):
-    if border+pixelsize*ypixframe-3 <= my <= border+pixelsize*ypixframe+3:
-        if pixelsize * xpixframe + border * 2  <= mx <= xframe - 20:
-            checkbrush = (mx - pixelsize * xpixframe - border * 2) // 7
-            pygame.draw.rect(screen,background,(pixelsize * xpixframe + border * 2 + 7*brush, border+pixelsize*ypixframe-3,7,7))
-            pygame.draw.rect(screen,gray,(pixelsize * xpixframe + border * 2 + 7*brush, border+pixelsize*ypixframe-1,7,3))
-            pygame.draw.rect(screen,white,(pixelsize * xpixframe + border * 2 + 7*checkbrush, border+pixelsize*ypixframe-3,7,7))
-            return checkbrush
+def brushsize(mx,my):
+    if slidery - 3 <= my <= slidery + 3:
+        if panelx <= mx <= sliderend:
+            return (mx - panelx) // notch
     return None
 
 def outofbounds (xlocation, ylocation):
@@ -652,7 +666,6 @@ def paint(mxp, myp, replacetype, size, allgrid,replacecount,transfernone):
 
 screen.fill(background)
 makewindgrid()
-borderstart()
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -686,7 +699,7 @@ while running:
             else:
                 transfernone = 0
             paint(mxp, myp, replacetype, size, allgrid,replacecount,transfernone)
-        checkbrush = brushsize(mx,my,brush)
+        checkbrush = brushsize(mx,my)
         if checkbrush != None:
             brush = checkbrush
     if flipscreen ==0:
@@ -696,6 +709,7 @@ while running:
     updategrid(flipscreen)
     updatecountgrid()
     show()
+    drawpanel(substaince, brush)
     pygame.display.flip()
     clock.tick(60)
 pygame.quit()
