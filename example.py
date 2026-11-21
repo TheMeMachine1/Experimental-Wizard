@@ -428,7 +428,7 @@ def showbackground():
                 if pixel == blackholew:
                     pygame.draw.circle(screen,pixel.get('color'),(xbigcenter,ybigcenter),10)
                 else:
-                    if pixel is windcircle:  # wind goes on the see-through overlay
+                    if pixel is windcircle or pixel is gravitycircle:  # wind goes on the see-through overlay
                         target = overlay
                         color = pixel.get('color') + (120,)
                         hole = (0,0,0,0)
@@ -462,11 +462,15 @@ def showparticle():
             if pixel != air:
                 pygame.draw.rect(screen, pixel.get('color'), (xpaint*pixelsize+border,ypaint*pixelsize+border,pixelsize,pixelsize) )
 
-def show():
+def show(backfirst):
     pygame.draw.rect(screen,background,(border,border,xpixframe*pixelsize,ypixframe*pixelsize))
     overlay.fill((0,0,0,0))
-    showbackground()
-    showparticle()
+    if backfirst == True:
+        showparticle()
+        showbackground()
+    else:
+        showbackground()
+        showparticle()
     screen.blit(overlay,(0,0))
 
 def backgroundpaint(mx,my,replacetype,allgrid):
@@ -681,11 +685,6 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-    keys = pygame.key.get_pressed()
-    if pygame.key.get_just_pressed:
-        mouse_pos = pygame.mouse.get_pos()
-        mx = (mouse_pos[0])
-        my = (mouse_pos[1])
     press = pygame.mouse.get_pressed()
     if press[0]:
         mouse_pos = pygame.mouse.get_pos()
@@ -719,7 +718,8 @@ while running:
         flipscreen =0
     updategrid(flipscreen)
     updatecountgrid()
-    show()
+    backfirst = False
+    show(backfirst)
     drawpanel(substaince, brush)
     pygame.display.flip()
     clock.tick(60)
