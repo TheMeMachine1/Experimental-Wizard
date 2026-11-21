@@ -23,7 +23,8 @@ notch = 7                                     # slider pixels per brush step
 brush = 1
 flipscreen = 0
 screen = pygame.display.set_mode((xframe, yframe))
-pygame.display.set_caption("Expermental Wizard")
+pygame.display.set_caption("Experimental Wizard")
+overlay = pygame.Surface((xframe, yframe), pygame.SRCALPHA)  # see-through layer drawn over particles
 clock = pygame.time.Clock()
 gray = (100,100,100)
 yellow = (255,255,0)
@@ -427,7 +428,15 @@ def showbackground():
                 if pixel == blackholew:
                     pygame.draw.circle(screen,pixel.get('color'),(xbigcenter,ybigcenter),10)
                 else:
-                    pygame.draw.circle(screen, pixel.get('color'), (xbigcenter,ybigcenter),bigpixelsize//2 -5)
+                    if pixel is windcircle:  # wind goes on the see-through overlay
+                        target = overlay
+                        color = pixel.get('color') + (120,)
+                        hole = (0,0,0,0)
+                    else:
+                        target = screen
+                        color = pixel.get('color')
+                        hole = background
+                    pygame.draw.circle(target, color, (xbigcenter,ybigcenter),bigpixelsize//2 -5)
                     direction = backgrounddirgrid[xpaint][ypaint]
                     if 1 <= direction <= 3:
                         xchange = 2
@@ -443,8 +452,8 @@ def showbackground():
                         ychange = 48
                     xend = xfirst+xchange
                     yend = yfirst+ychange
-                    pygame.draw.circle(screen, background, (xbigcenter,ybigcenter), 17)
-                    pygame.draw.line(screen,pixel.get('color'),(xbigcenter,ybigcenter),(xend,yend),2)
+                    pygame.draw.circle(target, hole, (xbigcenter,ybigcenter), 17)
+                    pygame.draw.line(target,color,(xbigcenter,ybigcenter),(xend,yend),2)
 
 def showparticle():
     for xpaint in range (xpixframe):
@@ -455,8 +464,10 @@ def showparticle():
 
 def show():
     pygame.draw.rect(screen,background,(border,border,xpixframe*pixelsize,ypixframe*pixelsize))
+    overlay.fill((0,0,0,0))
     showbackground()
     showparticle()
+    screen.blit(overlay,(0,0))
 
 def backgroundpaint(mx,my,replacetype,allgrid):
     mxb = ((mx - border) //bigpixelsize)
