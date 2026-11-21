@@ -59,6 +59,7 @@ changegrid = [[0] * ypixframe for _ in range(xpixframe)]
 backgroundgrid = [[empty] * bigypixframe for _ in range(bigxpixframe)]
 backgrounddirgrid = [[0] * bigypixframe for _ in range(bigxpixframe)]
 forcegrid = [[0] * ypixframe for _ in range(xpixframe)]
+moved = set()  # cells that already moved this frame
 windcirclegriddiagonal = [[0] * 50 for _ in range(50)]
 windcriclegridstrait = [[0] * 50 for _ in range(50)]
 
@@ -176,7 +177,7 @@ def updatecountgrid():
     for xpaint in range (xpixframe):
         for ypaint in range (ypixframe):
             count = countgrid[xpaint][ypaint]
-            if count != 0 and count == None:
+            if count > 0:
                 countgrid[xpaint][ypaint] = count-1
 
 def interactionrun(xpaint,ypaint,xlocation,ylocation):
@@ -247,6 +248,7 @@ def flip (xpaint, ypaint, xlocation, ylocation):
     count2 = countgrid[xlocation][ylocation]
     countgrid[xpaint][ypaint] = count2
     countgrid[xlocation][ylocation] = count1
+    moved.add((xlocation, ylocation))
 
 def moveupdate(potmove, den, xpaint, ypaint, priority):
     direction = forcegrid[xpaint][ypaint]
@@ -292,6 +294,7 @@ def moveupdate(potmove, den, xpaint, ypaint, priority):
     return False          
 
 def updategrid(flipscreen):
+    moved.clear()
     for xpixnum in range (xpixframe):
         for ypixnum in range (ypixframe):
             if flipscreen == 0:
@@ -300,6 +303,8 @@ def updategrid(flipscreen):
             else:
                 xpaint=xpixframe-1-xpixnum
                 ypaint=ypixframe-1-ypixnum
+            if (xpaint, ypaint) in moved:
+                continue
             pixel = grid[xpaint][ypaint]
             change =0
             if pixel.get("lifespam") != "none":
@@ -313,7 +318,7 @@ def updategrid(flipscreen):
                     size = 1
                     replacetype = 1
                     replacecount = 0
-                    transfernone = 1
+                    transfernone = 0
                     allgrid = changegrid
                     paint(mxp,myp,replacetype,size,allgrid,replacecount,transfernone)
             if changegrid[xpaint][ypaint] == 1 or change ==1:
@@ -390,7 +395,7 @@ def updategrid(flipscreen):
                     replacecount = 0
                     replacetype = 1
                     size = 1
-                    transfernone = 1
+                    transfernone = 0
                     paint(mxp,myp,replacetype,size,allgrid,replacecount,transfernone)
                 else:
                     changegrid[xpaint][ypaint] = 0
@@ -606,7 +611,7 @@ def forcechange(mxb,myb):
                         else:
                             forcegrid[xpixel][ypixel]=7
                         if xforce == 0 and yforce == 0:
-                            forcegrid[xpixel][ypixel]= "none"
+                            forcegrid[xpixel][ypixel]= 0
                         changegrid[xpixel][ypixel]=1
 
 def paint(mxp, myp, replacetype, size, allgrid,replacecount,transfernone):
