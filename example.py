@@ -1,12 +1,14 @@
 import pygame
 import random
-import math
-import array
 import os
 import sys
 import asyncio
 
-import music  # music.py: the adaptive music
+import music    # music.py: the adaptive music
+import audio    # audio.py: sound effects + the mood that steers the music
+import display  # display.py: fitting the window
+import panel    # panel.py: the side panel
+import welcome  # welcome.py: the title screen
 
 # CD-quality stereo (for the music). Small buffer on desktop so effects play instantly; a bigger one in a
 # web browser, where sound is mixed on the same thread as the game and a small buffer crackles on slow frames.
@@ -40,99 +42,10 @@ if web:
     platform.document.body.style.background = "rgb(30, 30, 60)"  # page edges match the game instead of grey
 else:
     window = pygame.display.set_mode((xframe, yframe), pygame.RESIZABLE)
-screen = pygame.Surface((xframe, yframe))  # the game draws here at its normal size; present() fits it to the window
-viewscale = 1  # how much the picture is scaled in the window
-viewx = 0      # where the picture starts in the window (black bars fill the rest)
-viewy = 0
-
-def present():
-    # scale the game picture to fit the window, keeping its shape
-    global viewscale, viewx, viewy
-    windoww, windowh = window.get_size()
-    viewscale = min(windoww / xframe, windowh / yframe)
-    picturew = int(xframe * viewscale)
-    pictureh = int(yframe * viewscale)
-    viewx = (windoww - picturew) // 2
-    viewy = (windowh - pictureh) // 2
-    window.fill((0, 0, 0))
-    window.blit(pygame.transform.smoothscale(screen, (picturew, pictureh)), (viewx, viewy))
-    pygame.display.flip()
-
-def gamemouse(pos):
-    # turn a position in the window into a position in the game
-    return (int((pos[0] - viewx) / viewscale), int((pos[1] - viewy) / viewscale))
+screen = pygame.Surface((xframe, yframe))  # the game draws here at its normal size; display.present() fits it to the window
 pygame.display.set_caption("Experimental Wizard")
 overlay = pygame.Surface((xframe, yframe), pygame.SRCALPHA)  # see-through layer drawn over particles
 
-# ---------- fitting the window ----------
-# When the window (or browser tab) changes shape, the world gains or loses rows/columns so the
-# game fills the window exactly instead of showing bars. Never smaller than the original size.
-maxxpixframe = 280  # biggest world, in cells (a bigger world means more work every frame)
-maxypixframe = 200
-
-def regrid(old, oldw, oldh, neww, newh, fill, shift):
-    # copy a grid into a new size; shift moves everything down (keeps piles on the floor)
-    new = [[fill] * newh for _ in range(neww)]
-    for x in range(min(oldw, neww)):
-        for y in range(oldh):
-            if 0 <= y + shift < newh:
-                new[x][y + shift] = old[x][y]
-    return new
-
-def resizeworld(newx, newy, width, height):
-    global xpixframe, ypixframe, bigxpixframe, bigypixframe, xframe, yframe, panelx, slidery, sliderend
-    global grid, countgrid, changegrid, forcegrid, backgroundgrid, backgrounddirgrid, screen, overlay
-    shift = newy - ypixframe  # rows are added/removed at the top
-    grid = regrid(grid, xpixframe, ypixframe, newx, newy, air, shift)
-    countgrid = regrid(countgrid, xpixframe, ypixframe, newx, newy, 0, shift)
-    forcegrid = regrid(forcegrid, xpixframe, ypixframe, newx, newy, 0, shift)
-    changegrid = [[1] * newy for _ in range(newx)]  # wake everything up so it settles into the new space
-    backgroundgrid = regrid(backgroundgrid, bigxpixframe, bigypixframe, newx // 10, newy // 10, empty, shift // 10)
-    backgrounddirgrid = regrid(backgrounddirgrid, bigxpixframe, bigypixframe, newx // 10, newy // 10, 0, shift // 10)
-    welcomecircles[:] = [(mx, my + shift * pixelsize) for mx, my in welcomecircles
-                         if border <= my + shift * pixelsize < border + newy * pixelsize and mx < border + newx * pixelsize]
-    moved.clear()
-    xpixframe, ypixframe, bigxpixframe, bigypixframe = newx, newy, newx // 10, newy // 10
-    xframe, yframe = width, height
-    panelx = pixelsize * xpixframe + border * 2
-    slidery = border + pixelsize * ypixframe
-    sliderend = panelx + 180
-    volumey.update(music=slidery - 110, effects=slidery - 60)
-    playbutton.center = (xframe // 2, yframe // 2 + 60)
-    screen = pygame.Surface((xframe, yframe))
-    screen.fill(background)
-    overlay = pygame.Surface((xframe, yframe), pygame.SRCALPHA)
-
-def fitwindow(windoww, windowh):
-    # pick a drawing size with the same shape as the window, then size the world to match
-    global window
-    aspect = windoww / max(1, windowh)
-    if aspect >= basexframe / baseyframe:   # wider than the game: add columns
-        height = baseyframe
-        width = round(height * aspect)
-    else:                                   # taller than the game: add rows
-        width = basexframe
-        height = round(width / aspect)
-    if (width, height) == (xframe, yframe):
-        return
-    newx = max(160, min(maxxpixframe, (width - 2*border - controlsb) // pixelsize // 10 * 10))
-    newy = max(120, min(maxypixframe, (height - 2*border) // pixelsize // 10 * 10))
-    resizeworld(newx, newy, width, height)
-    if web:
-        window = pygame.display.set_mode((width, height))
-        platform.window.window_resize()  # tell the page to re-fit the canvas
-
-windowsize = None
-def checkwindow():
-    # called every frame: notice when the window / browser tab changes size
-    global windowsize
-    if web:
-        size = (platform.window.innerWidth, platform.window.innerHeight)
-    else:
-        size = window.get_size()
-    if size != windowsize:
-        windowsize = size
-        fitwindow(*size)
 clock = pygame.time.Clock()
 gray = (100,100,100)
 yellow = (255,255,0)
@@ -363,154 +276,6 @@ def interactionrun(xpaint,ypaint,xlocation,ylocation):
                     countgrid[xlocation][ylocation] = inter2.get("lifespam")
                 return True
     return False
-
-# ---------- material panel: category tabs ----------
-# Each palette item goes under a tab worked out from what it is (see categoryof), so a new
-# material added to scrollist lands in the right tab by itself. The Eraser is always shown.
-categories = ["Liquids", "Powders", "Solids", "Energy", "Forces"]
-tabcolors = {"Liquids": (70, 130, 255), "Powders": (220, 180, 110), "Solids": (160, 160, 175),
-             "Energy": (255, 120, 50), "Forces": (170, 110, 255)}
-currenttab = "Liquids"
-panelw = 185             # usable width of the side panel
-tabh, tabgap = 22, 5     # tab button height and the space between tabs
-rowh = 30                # height of one material row
-headerfont = pygame.font.Font(None, 17)
-tabfont = pygame.font.Font(None, 18)
-# panel colours
-cardcolor = (38, 38, 72)
-cardedge = (62, 62, 104)
-rowhover = (52, 52, 96)
-dimtext = (150, 150, 185)
-trackcolor = (70, 70, 110)
-fillcolor = (120, 140, 255)
-
-def mixcolor(a, b, amount):
-    # blend colour a toward colour b (amount 0 to 1)
-    return tuple(int(a[i] + (b[i] - a[i]) * amount) for i in range(3))
-
-def categoryof(material):
-    if material.get("background"):
-        return "Forces"
-    return {"liquid": "Liquids", "powder": "Powders", "solid": "Solids"}.get(material.get("move"), "Energy")
-
-def tabrect(k):
-    # 3 tabs on the top row, 2 wider ones below, together filling the panel width
-    top = paneltop + 12
-    if k < 3:
-        w = (panelw - 2 * tabgap) / 3
-        return pygame.Rect(round(panelx + k * (w + tabgap)), top, round(w), tabh)
-    w = (panelw - tabgap) / 2
-    return pygame.Rect(round(panelx + (k - 3) * (w + tabgap)), top + tabh + tabgap, round(w), tabh)
-
-def visiblerows():
-    # (index into scrollist, y) for every row shown right now. Drawing AND clicking both use this,
-    # so what you see is always what you click.
-    rows = []
-    y = paneltop + 12 + 2 * (tabh + tabgap) + 12
-    if air in scrollist:
-        rows.append((scrollist.index(air), y))  # the Eraser, always there
-        y += rowh + 10                          # room for the divider under it
-    lastrow = volumey["music"] - 70             # stop before the SOUND section
-    for i, material in enumerate(scrollist):
-        if material is not air and categoryof(material) == currenttab and y + rowh <= lastrow:
-            rows.append((i, y))
-            y += rowh
-    return rows
-
-def rowrect(y):
-    return pygame.Rect(panelx - 4, y, panelw + 8, rowh - 4)
-
-def picktab(mx, my):
-    # if a tab was clicked, switch to it (returns True)
-    global currenttab
-    for k, name in enumerate(categories):
-        if tabrect(k).collidepoint(mx, my) and name != currenttab:
-            currenttab = name
-            return True
-    return False
-
-def drawslider(y, amount, label):
-    # label above, a rounded track, the filled part in colour, and a round knob
-    screen.blit(font.render(label, True, white), (panelx, y - 25))
-    knobx = panelx + int(amount * (sliderend - panelx))
-    pygame.draw.line(screen, trackcolor, (panelx, y), (sliderend, y), 4)
-    pygame.draw.line(screen, fillcolor, (panelx, y), (knobx, y), 4)
-    pygame.draw.circle(screen, white, (knobx, y), 6)
-
-def drawpanel(selected, brush):
-    mx, my = gamemouse(pygame.mouse.get_pos())
-    pygame.draw.rect(screen, background, (panelx - 14, 0, xframe - panelx + 14, yframe))
-    card = pygame.Rect(panelx - 10, 8, panelw + 20, yframe - 12)
-    pygame.draw.rect(screen, cardcolor, card, border_radius=10)
-    pygame.draw.rect(screen, cardedge, card, 1, border_radius=10)
-    # MATERIALS header and tabs
-    screen.blit(headerfont.render("MATERIALS", True, dimtext), (panelx, paneltop - 4))
-    selectedtab = None if selected is air else categoryof(selected)
-    for k, name in enumerate(categories):
-        rect = tabrect(k)
-        color = tabcolors[name]
-        if name == currenttab:
-            pygame.draw.rect(screen, mixcolor(cardcolor, color, 0.45), rect, border_radius=6)
-            pygame.draw.rect(screen, color, rect, 1, border_radius=6)
-            text = white
-        else:
-            hover = rect.collidepoint(mx, my)
-            pygame.draw.rect(screen, rowhover if hover else (46, 46, 86), rect, border_radius=6)
-            text = dimtext
-        label = tabfont.render(name, True, text)
-        screen.blit(label, label.get_rect(center=rect.center))
-        if name == selectedtab:  # small dot: your selected material is in this tab
-            pygame.draw.circle(screen, color, (rect.right - 6, rect.top + 6), 3)
-    # material rows
-    accent = tabcolors.get(selectedtab, (200, 200, 220))
-    for n, (i, y) in enumerate(visiblerows()):
-        material = scrollist[i]
-        row = rowrect(y)
-        if material is selected:
-            pygame.draw.rect(screen, mixcolor(cardcolor, accent, 0.3), row, border_radius=6)
-            pygame.draw.rect(screen, accent, (row.x, row.y + 3, 3, row.height - 6), border_radius=2)
-        elif row.collidepoint(mx, my):
-            pygame.draw.rect(screen, rowhover, row, border_radius=6)
-        swatch = pygame.Rect(panelx + 6, row.centery - 8, 16, 16)
-        pygame.draw.rect(screen, material.get("color"), swatch, border_radius=4)
-        pygame.draw.rect(screen, (200, 200, 225), swatch, 1, border_radius=4)
-        if material is air:  # Eraser: a little x
-            pygame.draw.line(screen, (230, 90, 90), (swatch.x + 4, swatch.y + 4), (swatch.right - 5, swatch.bottom - 5), 2)
-            pygame.draw.line(screen, (230, 90, 90), (swatch.right - 5, swatch.y + 4), (swatch.x + 4, swatch.bottom - 5), 2)
-        screen.blit(labels[i], (swatch.right + 10, row.centery - labels[i].get_height() // 2))
-        if n == 0 and material is air:  # divider under the Eraser
-            pygame.draw.line(screen, cardedge, (panelx, row.bottom + 7), (panelx + panelw, row.bottom + 7), 1)
-    # SOUND and brush
-    screen.blit(headerfont.render("SOUND", True, dimtext), (panelx, volumey["music"] - 48))
-    drawvolume("music", "Music", musicvolume)
-    drawvolume("effects", "Effects", effectsvolume)
-    maxbrush = (sliderend - panelx) // notch
-    drawslider(slidery, brush / maxbrush, "Brush size: " + str(brush))
-
-volumey = {"music": slidery - 110, "effects": slidery - 60}  # y of each volume slider line
-
-def drawvolume(name, label, value):
-    amount = "muted (M)" if muted else str(round(value * 100)) + "%"
-    drawslider(volumey[name], value, label + ": " + amount)
-
-def volumeclick(mx, my):
-    # if the click is on a volume slider: (which slider, new volume 0 to 1)
-    for name, y in volumey.items():
-        if y - 8 <= my <= y + 8 and panelx - 5 <= mx <= sliderend + 5:
-            return name, max(0.0, min(1.0, (mx - panelx) / (sliderend - panelx)))
-    return None
-
-def picksubtype(mx, my):
-    for i, y in visiblerows():
-        if rowrect(y).collidepoint(mx, my):
-            return scrollist[i]
-    return False
-
-def brushsize(mx,my):
-    if slidery - 8 <= my <= slidery + 8:
-        if panelx - 5 <= mx <= sliderend + 5:
-            return max(0, min((sliderend - panelx) // notch, (mx - panelx) // notch))
-    return None
 
 def outofbounds (xlocation, ylocation):
     if 0 <= xlocation < xpixframe and 0 <= ylocation < ypixframe:
@@ -939,364 +704,97 @@ def paint(mxp, myp, replacetype, size, allgrid,replacecount,transfernone):
         transfernone = 1
         paint (mxp,myp,replacetype,size,allgrid,replacecount,transfernone)
 
-# ---------- sound effects ----------
-# All sounds are generated from code at startup, so there are no sound files.
-sounds = {}
-
-def normalize(track):
-    peak = max(abs(v) for v in track) or 1
-    return [v / peak for v in track]
-
-def tone(freq, length, decay):
-    # a sine beep that fades out
-    rate = soundrate
-    return [math.sin(2*math.pi*freq*i/rate) * math.exp(-decay*i/rate) for i in range(int(length*rate))]
-
-def chirp(startfreq, endfreq, length):
-    # a beep that slides in pitch (bubbles, plops)
-    out, phase, n = [], 0.0, int(length*soundrate)
-    for i in range(n):
-        phase += 2*math.pi*(startfreq + (endfreq - startfreq)*i/n)/soundrate
-        out.append(math.sin(phase) * (1 - i/n))
-    return out
-
-def noise(length, smooth):
-    # random noise; small smooth = deep rumble, smooth near 1 = bright hiss
-    out, level = [], 0.0
-    for i in range(int(length*soundrate)):
-        level += smooth * (random.uniform(-1, 1) - level)
-        out.append(level)
-    return normalize(out)
-
-def scatter(short, times, length):
-    # drop copies of a short sound into a silent track at the given times
-    out = [0.0] * int(length*soundrate)
-    for t in times:
-        start = int(t*soundrate)
-        for i, v in enumerate(short):
-            if start + i < len(out):
-                out[start + i] += v
-    return out
-
-def mix(*tracks):
-    return [sum(t[i] for t in tracks if i < len(t)) for i in range(max(len(t) for t in tracks))]
-
-def makesound(track, volume):
-    data = array.array("h")
-    for v in track:
-        data.extend([int(max(-1.0, min(1.0, v*volume)) * 32767)] * soundchannels)
-    return pygame.mixer.Sound(buffer=data.tobytes())
-
-def randomtimes(persecond, length):
-    return [random.uniform(0, length) for _ in range(int(persecond*length))]
-
-def bubble(freq, length):
-    # one lava "bloop": the pitch jumps up as the bubble pops, and it dies away fast
-    out, phase, n = [], 0.0, int(length*soundrate)
-    for i in range(n):
-        t = i / n
-        phase += 2*math.pi*freq*(1 + 1.5*t) / soundrate
-        out.append(math.sin(phase) * math.exp(-5*t) * min(1, i / (0.005*soundrate)))
-    return out
-
-def makelava():
-    # 3-second loop: thick bubbles of random sizes, a low rumble, and a few hot-rock crackles
-    length = 3.0
-    out = [v * 0.25 for v in noise(length, 0.008)]
-    for _ in range(int(10 * length)):
-        size = random.uniform(0.06, 0.15)                 # bigger bubbles are lower and last longer
-        pop = bubble(random.uniform(90, 260) * 0.1 / size, size)
-        start = int(random.uniform(0, length - size) * soundrate)  # never cut off at the loop point
-        loudness = random.uniform(0.4, 1.0)
-        for i, v in enumerate(pop):
-            out[start + i] += v * loudness
-    crackle = [v * (1 - i/180) for i, v in enumerate(noise(180/soundrate, 0.9))]
-    for _ in range(int(6 * length)):
-        start = int(random.uniform(0, length - 0.01) * soundrate)
-        for i, v in enumerate(crackle):
-            out[start + i] += v * 0.15
-    return normalize(out)
-
-soundvolume = {}  # base volume of each effect (recorded files are normalized, so they're turned down here)
-
-def addsound(name, volume, generate):
-    # Use the recording in sounds/<name>.ogg if there is one (made by tools/prepare_sounds.py),
-    # otherwise generate a stand-in sound from code.
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sounds", name + ".ogg")
-    if os.path.exists(path):
-        sounds[name] = pygame.mixer.Sound(path)
-        soundvolume[name] = volume
-    else:
-        sounds[name] = generate()
-        soundvolume[name] = 1.0  # generated sounds have their volume built in
-    sounds[name].set_volume(soundvolume[name])
-
-if pygame.mixer.get_init() and pygame.mixer.get_init()[1] == -16:
-    soundrate, _, soundchannels = pygame.mixer.get_init()
-    addsound("click", 0.4, lambda: makesound(tone(1400, 0.05, 80), 0.3))
-    addsound("chime", 0.5, lambda: makesound(mix(tone(660, 0.6, 6), scatter(tone(990, 0.5, 6), [0.12], 0.7)), 0.3))
-    whoosh = noise(0.6, 0.15)
-    addsound("whoosh", 0.5, lambda: makesound([v * math.sin(math.pi*i/len(whoosh))**2 for i, v in enumerate(whoosh)], 0.35))
-    hiss = noise(0.5, 0.9)
-    addsound("sizzle", 0.3, lambda: makesound([v * (1 - i/len(hiss))**2 for i, v in enumerate(hiss)], 0.25))
-    # looping sounds while painting a material
-    addsound("water", 0.5, lambda: makesound(mix(scatter(chirp(300, 900, 0.04), randomtimes(12, 1), 1), [v*0.15 for v in noise(1, 0.05)]), 0.35))
-    addsound("lava", 0.55, lambda: makesound(makelava(), 0.45))
-    addsound("fire", 0.5, lambda: makesound(mix(scatter([v*(1 - i/150) for i, v in enumerate(noise(150/soundrate, 0.9))], randomtimes(40, 1), 1),
-                                                [v*0.3 for v in noise(1, 0.03)]), 0.35))
-    addsound("powder", 0.35, lambda: makesound([v * (0.7 + 0.3*math.sin(2*math.pi*7*i/soundrate)) for i, v in enumerate(noise(1, 0.6))], 0.15))
-    addsound("magic", 0.4, lambda: makesound(scatter(tone(random.uniform(1800, 3500), 0.15, 30), randomtimes(15, 1), 1), 0.2))
-    music.load()
-
+# sound settings (the side panel's sliders and the M key change these)
 musicvolume = 0.6     # music volume, 0 to 1 (Music slider)
 effectsvolume = 1.0   # sound effects volume, 0 to 1 (Effects slider)
 muted = False         # M key turns all sound off/on
-reactheat = 0.0  # reactions per frame, smoothed so one sizzle doesn't flip the mood
-hotcount = 0     # fire + lava cells (counted every few frames)
-moodframe = 0
 
-def measuremood():
-    global reactheat, hotcount, moodframe
-    reactheat += (interactions - reactheat) * 0.05
-    moodframe += 1
-    if moodframe % 10 == 0:
-        hotcount = sum(column.count(fire) + column.count(lava) for column in grid)
-    return {
-        "menu": False,
-        "reactions": reactheat,
-        "moving": len(moved),  # cells that actually moved this frame
-        "hot": hotcount,
-        "circles": sum(1 for column in backgroundgrid for cell in column if cell is not empty),
-    }
+# ---------- linking the other files ----------
+# display.py (window), panel.py (side panel), audio.py (sound effects) and welcome.py (title screen)
+# hold the features that sit around the simulation. They reach this file's variables through
+# `game` (game.grid, game.screen, ...), which always gives the current value.
 
-menumood = {"menu": True}
+class GameLink:
+    def __getattr__(self, name):
+        try:
+            return globals()[name]
+        except KeyError:
+            raise AttributeError(name)
 
-def musiclevel():
-    # the Music slider, or 0 when muted
-    return 0 if muted else musicvolume
+    def __setattr__(self, name, value):
+        globals()[name] = value
 
-def effectlevel(name):
-    # how loud an effect should play: its own level x the Effects slider (0 when muted)
-    return 0 if muted else soundvolume[name] * effectsvolume
-
-def applyeffectvolume():
-    # after the slider or mute changes, update sounds that may already be playing
-    for name in sounds:
-        sounds[name].set_volume(effectlevel(name))
-
-def playsound(name):
-    if name in sounds:
-        sounds[name].set_volume(effectlevel(name))
-        sounds[name].play()
-
-paintloop = None  # name of the looping paint sound that's playing right now
-
-def setpaintloop(name):
-    # start/stop the looping sound for whatever is being painted (None = silence)
-    global paintloop
-    if name == paintloop:
-        return
-    if paintloop in sounds:
-        sounds[paintloop].fadeout(150)
-    if name in sounds:
-        sounds[name].set_volume(effectlevel(name))
-        sounds[name].play(loops=-1, fade_ms=80)
-    paintloop = name
-
-def paintsoundfor(material):
-    if material is water: return "water"
-    if material is lava: return "lava"
-    if material is fire: return "fire"
-    if material is magic: return "magic"
-    if material is magicpowder or material is rock: return "powder"
-    return None  # eraser is silent
-
-sizzlechannel = None
-
-def playsizzle(count):
-    # one sizzle at a time, louder when lots of things are reacting
-    global sizzlechannel
-    if "sizzle" in sounds and (sizzlechannel is None or not sizzlechannel.get_busy()):
-        sounds["sizzle"].set_volume(effectlevel("sizzle") * min(1.0, 0.3 + count / 20))
-        sizzlechannel = sounds["sizzle"].play()
-
-# ---------- welcome screen ----------
-titlefont = pygame.font.Font(None, 96)
-buttonfont = pygame.font.Font(None, 48)
-welcomedrops = [lava, magicpowder, redsand, fire, magic]  # what rains down behind the menu (no water: water + lava makes solid obsidian that piles up mid-air)
-playbutton = pygame.Rect(0, 0, 200, 64)
-playbutton.center = (xframe // 2, yframe // 2 + 60)
-
-welcomecircles = []  # screen positions of the force circles placed behind the menu
-
-def welcomecircle():
-    # swap the oldest background circle for a new random one
-    if len(welcomecircles) >= 4:
-        oldx, oldy = welcomecircles.pop(0)
-        backgroundpaint(oldx, oldy, empty, backgroundgrid)
-    mx = border + random.randrange(bigxpixframe * bigpixelsize)
-    my = border + random.randrange(bigypixframe * bigpixelsize)
-    backgroundpaint(mx, my, random.choice([windcircle, windcircle, gravitycircle, blackholew]), backgroundgrid)
-    welcomecircles.append((mx, my))
-
-def welcomestep(flipscreen):
-    if random.random() < 1/180:  # about every 3 seconds
-        welcomecircle()
-    # now and then drop a random blob of a random material near the top
-    if random.random() < 0.5:
-        material = random.choice(welcomedrops)
-        lifespan = material.get("lifespam")
-        x = random.randrange(xpixframe)
-        y = random.randrange(15)
-        size = random.randint(1, 3)
-        if lifespan == "none":
-            paint(x, y, material, size, grid, 0, 1)
-        else:
-            paint(x, y, material, size, grid, lifespan, 0)
-    # drain all four edges so nothing piles up; stuff blown off-screen just disappears
-    for x in range(xpixframe):
-        for y in (0, ypixframe-1):
-            grid[x][y] = air
-        changegrid[x][1] = 1
-        changegrid[x][ypixframe-2] = 1
-    for y in range(ypixframe):
-        for x in (0, xpixframe-1):
-            grid[x][y] = air
-        changegrid[1][y] = 1
-        changegrid[xpixframe-2][y] = 1
-    updategrid(flipscreen)
-    updatecountgrid()
-    show()
-
-def stretchwelcome():
-    # stretch the sandbox over the whole window (cropping a bit of top and bottom)
-    # so the menu has no empty strip where the side panel normally goes
-    sim = screen.subsurface((border, border, xpixframe*pixelsize, ypixframe*pixelsize))
-    stretchedh = xframe * ypixframe // xpixframe
-    screen.blit(pygame.transform.scale(sim, (xframe, stretchedh)), (0, (yframe - stretchedh) // 2))
-
-def drawwelcome(mx, my):
-    title = "Experimental Wizard"
-    shadow = titlefont.render(title, True, (0,0,0))
-    text = titlefont.render(title, True, white)
-    titlepos = text.get_rect(center=(xframe // 2, yframe // 2 - 60))
-    screen.blit(shadow, titlepos.move(4, 4))
-    screen.blit(text, titlepos)
-    if playbutton.collidepoint(mx, my):
-        buttoncolor = (90, 90, 160)
-    else:
-        buttoncolor = (60, 60, 110)
-    pygame.draw.rect(screen, buttoncolor, playbutton, border_radius=12)
-    pygame.draw.rect(screen, white, playbutton, 3, border_radius=12)
-    label = buttonfont.render("Play", True, white)
-    screen.blit(label, label.get_rect(center=playbutton.center))
-
-def cleargrid():
-    for x in range(xpixframe):
-        for y in range(ypixframe):
-            grid[x][y] = air
-            countgrid[x][y] = 0
-            changegrid[x][y] = 0
-    for (mx, my) in welcomecircles:
-        backgroundpaint(mx, my, empty, backgroundgrid)
-    welcomecircles.clear()
+game = GameLink()
+for part in (display, panel, audio, welcome):
+    part.setup(game)
+audio.load()
 
 screen.fill(background)
 makewindgrid()
-for _ in range(4):
-    welcomecircle()
+welcome.start()
 wasdown = False  # was the mouse held last frame (so a click only whooshes once)
 music.start("menu")  # music starts on the menu and keeps going into the game
+def handlemouse():
+    # painting with the mouse, and clicks on the side panel
+    global wasdown
+    press = pygame.mouse.get_pressed()
+    loopname = None  # which paint sound should be looping this frame
+    if press[0]:
+        mx, my = display.gamemouse(pygame.mouse.get_pos())
+        replacetype = substaince
+        panel.click(mx, my, firstclick=not wasdown)
+        if substaince.get('background') != False:
+            if not wasdown and mx < panelx:
+                audio.playsound("whoosh")
+            backgroundpaint(mx,my,replacetype,backgroundgrid)
+        else:
+            mxp = ((mx - border) //pixelsize)
+            myp = ((my - border) //pixelsize)
+            replacecount = replacetype.get("lifespam")
+            if replacecount == "none":
+                replacecount = 0
+                transfernone = 1
+            else:
+                transfernone = 0
+            paint(mxp, myp, replacetype, brush, grid, replacecount, transfernone)
+            if outofbounds(mxp, myp):  # (returns True when inside the grid)
+                loopname = audio.paintsoundfor(replacetype)
+    audio.setpaintloop(loopname)
+    wasdown = press[0]
+
+def simulate():
+    # one step of the sandbox
+    global flipscreen, interactions, steammade
+    flipscreen = 1 - flipscreen
+    interactions = 0
+    steammade = 0
+    updategrid(flipscreen)
+    if steammade > 0:
+        audio.playsizzle(steammade)
+    music.update(audio.measuremood(), audio.musiclevel())
+    updatecountgrid()
+
 async def main():
     # The main loop is async so it can also run in a web browser (pygbag), where the
     # game has to hand control back to the browser every frame. On desktop it runs the same.
-    global allgrid, brush, checkbrush, effectsvolume, event, flipscreen, interactions, loopname, mightsubstaince, mouse_pos, musicvolume, muted, mx, mxp, my, myp, press, replacecount, replacetype, running, size, state, steammade, substaince, transfernone, volume, wasdown
+    global running, state
     while running:
-        checkwindow()  # reshape the world if the window changed size
+        display.checkwindow()  # reshape the world if the window changed size
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
-                muted = not muted
-                applyeffectvolume()
-            if state == "welcome" and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if playbutton.collidepoint(gamemouse(event.pos)):
-                    playsound("chime")
-                    music.start("calm")  # jump straight into the game music (the chime covers the cut)
-                    cleargrid()
-                    screen.fill(background)
-                    state = "playing"
+                audio.togglemute()
+            if state == "welcome" and welcome.playclicked(event):
+                state = "playing"
         if state == "welcome":
-            flipscreen = 1 - flipscreen
-            welcomestep(flipscreen)
-            stretchwelcome()
-            drawwelcome(*gamemouse(pygame.mouse.get_pos()))
-            music.update(menumood, musiclevel())
-            present()
-            clock.tick(60)
-            await asyncio.sleep(0)  # let the browser draw the frame
-            continue
-        press = pygame.mouse.get_pressed()
-        loopname = None  # which paint sound should be looping this frame
-        if press[0]:
-            mouse_pos = gamemouse(pygame.mouse.get_pos())
-            mx = (mouse_pos[0])
-            my = (mouse_pos[1])
-            replacetype = substaince
-            if not wasdown and picktab(mx, my):
-                playsound("click")
-            mightsubstaince = picksubtype(mx,my)
-            if mightsubstaince != False:
-                if mightsubstaince is not substaince:
-                    playsound("click")
-                substaince = mightsubstaince
-            if substaince.get('background') != False:
-                allgrid = backgroundgrid
-                if not wasdown and mx < panelx:
-                    playsound("whoosh")
-                backgroundpaint(mx,my,replacetype,allgrid)
-            else:
-                size = brush
-                allgrid = grid
-                mxp = ((mx - border) //pixelsize)
-                myp = ((my - border) //pixelsize)
-                replacecount = replacetype.get("lifespam")
-                if replacecount == "none":
-                    replacecount = 0
-                    transfernone = 1
-                else:
-                    transfernone = 0
-                paint(mxp, myp, replacetype, size, allgrid,replacecount,transfernone)
-                if outofbounds(mxp, myp):  # (returns True when inside the grid)
-                    loopname = paintsoundfor(replacetype)
-            volume = volumeclick(mx, my)
-            if volume:
-                if volume[0] == "music":
-                    musicvolume = volume[1]
-                else:
-                    effectsvolume = volume[1]
-                    applyeffectvolume()
-            checkbrush = brushsize(mx,my)
-            if checkbrush != None:
-                if checkbrush != brush:
-                    playsound("click")
-                brush = checkbrush
-        setpaintloop(loopname)
-        wasdown = press[0]
-        if flipscreen ==0:
-            flipscreen =1
+            welcome.frame()
         else:
-            flipscreen =0
-        interactions = 0
-        steammade = 0
-        updategrid(flipscreen)
-        if steammade > 0:
-            playsizzle(steammade)
-        music.update(measuremood(), musiclevel())
-        updatecountgrid()
-        show()
-        drawpanel(substaince, brush)
-        present()
+            handlemouse()
+            simulate()
+            show()
+            panel.draw(substaince, brush)
+        display.present()
         clock.tick(60)
         await asyncio.sleep(0)  # let the browser draw the frame
     pygame.quit()
