@@ -360,11 +360,25 @@ def interactionrun(xpaint,ypaint,xlocation,ylocation):
 # Each palette item goes under a tab worked out from what it is (see categoryof), so a new
 # material added to scrollist lands in the right tab by itself. The Eraser is always shown.
 categories = ["Liquids", "Powders", "Solids", "Energy", "Forces"]
+tabcolors = {"Liquids": (70, 130, 255), "Powders": (220, 180, 110), "Solids": (160, 160, 175),
+             "Energy": (255, 120, 50), "Forces": (170, 110, 255)}
 currenttab = "Liquids"
-tabw, tabh = 62, 22      # tab button size
-tabgap = 5               # space between tab buttons
-tabfont = pygame.font.Font(None, 20)
-tablabels = {name: tabfont.render(name, True, white) for name in categories}
+panelw = 185             # usable width of the side panel
+tabh, tabgap = 22, 5     # tab button height and the space between tabs
+rowh = 30                # height of one material row
+headerfont = pygame.font.Font(None, 17)
+tabfont = pygame.font.Font(None, 18)
+# panel colours
+cardcolor = (38, 38, 72)
+cardedge = (62, 62, 104)
+rowhover = (52, 52, 96)
+dimtext = (150, 150, 185)
+trackcolor = (70, 70, 110)
+fillcolor = (120, 140, 255)
+
+def mixcolor(a, b, amount):
+    # blend colour a toward colour b (amount 0 to 1)
+    return tuple(int(a[i] + (b[i] - a[i]) * amount) for i in range(3))
 
 def categoryof(material):
     if material.get("background"):
@@ -372,23 +386,31 @@ def categoryof(material):
     return {"liquid": "Liquids", "powder": "Powders", "solid": "Solids"}.get(material.get("move"), "Energy")
 
 def tabrect(k):
-    # tab buttons sit in rows of three at the top of the panel
-    return pygame.Rect(panelx + (k % 3) * (tabw + tabgap), paneltop + (k // 3) * (tabh + tabgap), tabw, tabh)
+    # 3 tabs on the top row, 2 wider ones below, together filling the panel width
+    top = paneltop + 12
+    if k < 3:
+        w = (panelw - 2 * tabgap) / 3
+        return pygame.Rect(round(panelx + k * (w + tabgap)), top, round(w), tabh)
+    w = (panelw - tabgap) / 2
+    return pygame.Rect(round(panelx + (k - 3) * (w + tabgap)), top + tabh + tabgap, round(w), tabh)
 
 def visiblerows():
     # (index into scrollist, y) for every row shown right now. Drawing AND clicking both use this,
     # so what you see is always what you click.
     rows = []
-    y = paneltop + 2 * (tabh + tabgap) + 10
+    y = paneltop + 12 + 2 * (tabh + tabgap) + 12
     if air in scrollist:
         rows.append((scrollist.index(air), y))  # the Eraser, always there
-        y += rowgap
-    lastrow = volumey["music"] - 45            # stop before the volume sliders
+        y += rowh + 10                          # room for the divider under it
+    lastrow = volumey["music"] - 70             # stop before the SOUND section
     for i, material in enumerate(scrollist):
-        if material is not air and categoryof(material) == currenttab and y + boxsize <= lastrow:
+        if material is not air and categoryof(material) == currenttab and y + rowh <= lastrow:
             rows.append((i, y))
-            y += rowgap
+            y += rowh
     return rows
+
+def rowrect(y):
+    return pygame.Rect(panelx - 4, y, panelw + 8, rowh - 4)
 
 def picktab(mx, my):
     # if a tab was clicked, switch to it (returns True)
@@ -399,36 +421,69 @@ def picktab(mx, my):
             return True
     return False
 
+def drawslider(y, amount, label):
+    # label above, a rounded track, the filled part in colour, and a round knob
+    screen.blit(font.render(label, True, white), (panelx, y - 25))
+    knobx = panelx + int(amount * (sliderend - panelx))
+    pygame.draw.line(screen, trackcolor, (panelx, y), (sliderend, y), 4)
+    pygame.draw.line(screen, fillcolor, (panelx, y), (knobx, y), 4)
+    pygame.draw.circle(screen, white, (knobx, y), 6)
+
 def drawpanel(selected, brush):
-    pygame.draw.rect(screen,background,(panelx - 8,0,xframe - panelx + 8,yframe))  # -8 so the old highlight outline gets cleared too
+    mx, my = gamemouse(pygame.mouse.get_pos())
+    pygame.draw.rect(screen, background, (panelx - 14, 0, xframe - panelx + 14, yframe))
+    card = pygame.Rect(panelx - 10, 8, panelw + 20, yframe - 12)
+    pygame.draw.rect(screen, cardcolor, card, border_radius=10)
+    pygame.draw.rect(screen, cardedge, card, 1, border_radius=10)
+    # MATERIALS header and tabs
+    screen.blit(headerfont.render("MATERIALS", True, dimtext), (panelx, paneltop - 4))
+    selectedtab = None if selected is air else categoryof(selected)
     for k, name in enumerate(categories):
         rect = tabrect(k)
-        pygame.draw.rect(screen, (70, 70, 130) if name == currenttab else (40, 40, 75), rect, border_radius=5)
-        # yellow outline: the tab you're looking at; yellow text: the tab your selected material is in
-        pygame.draw.rect(screen, yellow if name == currenttab else gray, rect, 1, border_radius=5)
-        label = tablabels[name] if name != categoryof(selected) or selected is air else tabfont.render(name, True, yellow)
+        color = tabcolors[name]
+        if name == currenttab:
+            pygame.draw.rect(screen, mixcolor(cardcolor, color, 0.45), rect, border_radius=6)
+            pygame.draw.rect(screen, color, rect, 1, border_radius=6)
+            text = white
+        else:
+            hover = rect.collidepoint(mx, my)
+            pygame.draw.rect(screen, rowhover if hover else (46, 46, 86), rect, border_radius=6)
+            text = dimtext
+        label = tabfont.render(name, True, text)
         screen.blit(label, label.get_rect(center=rect.center))
-    for i, rowy in visiblerows():
-        if scrollist[i] is selected:
-            pygame.draw.rect(screen,yellow,(panelx - 4,rowy - 4,xframe - border - panelx + 8,boxsize + 8),2)
-        pygame.draw.rect(screen,white,(panelx,rowy,boxsize,boxsize))
-        pygame.draw.rect(screen,scrollist[i].get("color"),(panelx + 1,rowy + 1,boxsize - 2,boxsize - 2))
-        screen.blit(labels[i],(panelx + boxsize + 8,rowy + 2))
+        if name == selectedtab:  # small dot: your selected material is in this tab
+            pygame.draw.circle(screen, color, (rect.right - 6, rect.top + 6), 3)
+    # material rows
+    accent = tabcolors.get(selectedtab, (200, 200, 220))
+    for n, (i, y) in enumerate(visiblerows()):
+        material = scrollist[i]
+        row = rowrect(y)
+        if material is selected:
+            pygame.draw.rect(screen, mixcolor(cardcolor, accent, 0.3), row, border_radius=6)
+            pygame.draw.rect(screen, accent, (row.x, row.y + 3, 3, row.height - 6), border_radius=2)
+        elif row.collidepoint(mx, my):
+            pygame.draw.rect(screen, rowhover, row, border_radius=6)
+        swatch = pygame.Rect(panelx + 6, row.centery - 8, 16, 16)
+        pygame.draw.rect(screen, material.get("color"), swatch, border_radius=4)
+        pygame.draw.rect(screen, (200, 200, 225), swatch, 1, border_radius=4)
+        if material is air:  # Eraser: a little x
+            pygame.draw.line(screen, (230, 90, 90), (swatch.x + 4, swatch.y + 4), (swatch.right - 5, swatch.bottom - 5), 2)
+            pygame.draw.line(screen, (230, 90, 90), (swatch.right - 5, swatch.y + 4), (swatch.x + 4, swatch.bottom - 5), 2)
+        screen.blit(labels[i], (swatch.right + 10, row.centery - labels[i].get_height() // 2))
+        if n == 0 and material is air:  # divider under the Eraser
+            pygame.draw.line(screen, cardedge, (panelx, row.bottom + 7), (panelx + panelw, row.bottom + 7), 1)
+    # SOUND and brush
+    screen.blit(headerfont.render("SOUND", True, dimtext), (panelx, volumey["music"] - 48))
     drawvolume("music", "Music", musicvolume)
     drawvolume("effects", "Effects", effectsvolume)
-    screen.blit(font.render("Brush size: " + str(brush),True,white),(panelx,slidery - 25))
-    pygame.draw.line(screen,gray,(panelx,slidery),(sliderend,slidery),3)
-    pygame.draw.rect(screen,white,(panelx + notch*brush,slidery - 3,notch,notch))
+    maxbrush = (sliderend - panelx) // notch
+    drawslider(slidery, brush / maxbrush, "Brush size: " + str(brush))
 
 volumey = {"music": slidery - 110, "effects": slidery - 60}  # y of each volume slider line
 
 def drawvolume(name, label, value):
-    y = volumey[name]
     amount = "muted (M)" if muted else str(round(value * 100)) + "%"
-    screen.blit(font.render(label + ": " + amount, True, white), (panelx, y - 25))
-    pygame.draw.line(screen, gray, (panelx, y), (sliderend, y), 3)
-    knobx = panelx + int(value * (sliderend - panelx))
-    pygame.draw.rect(screen, white, (knobx - 3, y - 5, 7, 11))
+    drawslider(volumey[name], value, label + ": " + amount)
 
 def volumeclick(mx, my):
     # if the click is on a volume slider: (which slider, new volume 0 to 1)
@@ -438,16 +493,15 @@ def volumeclick(mx, my):
     return None
 
 def picksubtype(mx, my):
-    if panelx <= mx <= xframe - border:
-        for i, rowy in visiblerows():
-            if rowy <= my <= rowy + boxsize:
-                return scrollist[i]
+    for i, y in visiblerows():
+        if rowrect(y).collidepoint(mx, my):
+            return scrollist[i]
     return False
 
 def brushsize(mx,my):
-    if slidery - 3 <= my <= slidery + 3:
-        if panelx <= mx <= sliderend:
-            return (mx - panelx) // notch
+    if slidery - 8 <= my <= slidery + 8:
+        if panelx - 5 <= mx <= sliderend + 5:
+            return max(0, min((sliderend - panelx) // notch, (mx - panelx) // notch))
     return None
 
 def outofbounds (xlocation, ylocation):
