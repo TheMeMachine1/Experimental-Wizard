@@ -222,7 +222,7 @@ def interactionrun(xpaint,ypaint,xlocation,ylocation):
     return False
 
 def drawpanel(selected, brush):
-    pygame.draw.rect(screen,background,(panelx,0,xframe - panelx,yframe))
+    pygame.draw.rect(screen,background,(panelx - 8,0,xframe - panelx + 8,yframe))  # -8 so the old highlight outline gets cleared too
     for listmaker in range(listsize):
         rowy = paneltop + listmaker*rowgap
         if scrollist[listmaker] is selected:
