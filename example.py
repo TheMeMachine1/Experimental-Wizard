@@ -3,9 +3,13 @@ import random
 import math
 import array
 import os
+import sys
 import threading
+import asyncio
 
-pygame.mixer.pre_init(44100, -16, 2, 512)  # CD-quality stereo (for the music), small buffer so effects play quickly
+# CD-quality stereo (for the music). Small buffer on desktop so effects play instantly; a bigger one in a
+# web browser, where sound is mixed on the same thread as the game and a small buffer crackles on slow frames.
+pygame.mixer.pre_init(44100, -16, 2, 4096 if sys.platform == "emscripten" else 512)
 pygame.init()
 pixelsize = 5
 xpixframe = 160
@@ -23,11 +27,18 @@ paneltop = border + 10                        # y of the first material row
 rowgap = 40                                   # distance between material rows
 boxsize = 17                                  # material swatch size
 slidery = border + pixelsize * ypixframe      # y of the brush slider
-sliderend = xframe - 20                       # right end of the brush slider
+sliderend = panelx + 180                      # right end of the sliders
 notch = 7                                     # slider pixels per brush step
 brush = 1
 flipscreen = 0
-window = pygame.display.set_mode((xframe, yframe), pygame.RESIZABLE)
+web = sys.platform == "emscripten"  # running in a web browser (pygbag)
+basexframe, baseyframe = xframe, yframe  # the smallest the game gets; bigger windows get a bigger world
+if web:
+    window = pygame.display.set_mode((xframe, yframe))  # web: fixed size; the page scales the canvas to fit the browser
+    import platform  # pygbag's link to the web page
+    platform.document.body.style.background = "rgb(30, 30, 60)"  # page edges match the game instead of grey
+else:
+    window = pygame.display.set_mode((xframe, yframe), pygame.RESIZABLE)
 screen = pygame.Surface((xframe, yframe))  # the game draws here at its normal size; present() fits it to the window
 viewscale = 1  # how much the picture is scaled in the window
 viewx = 0      # where the picture starts in the window (black bars fill the rest)
@@ -51,6 +62,76 @@ def gamemouse(pos):
     return (int((pos[0] - viewx) / viewscale), int((pos[1] - viewy) / viewscale))
 pygame.display.set_caption("Experimental Wizard")
 overlay = pygame.Surface((xframe, yframe), pygame.SRCALPHA)  # see-through layer drawn over particles
+
+# ---------- fitting the window ----------
+# When the window (or browser tab) changes shape, the world gains or loses rows/columns so the
+# game fills the window exactly instead of showing bars. Never smaller than the original size.
+maxxpixframe = 280  # biggest world, in cells (a bigger world means more work every frame)
+maxypixframe = 200
+
+def regrid(old, oldw, oldh, neww, newh, fill, shift):
+    # copy a grid into a new size; shift moves everything down (keeps piles on the floor)
+    new = [[fill] * newh for _ in range(neww)]
+    for x in range(min(oldw, neww)):
+        for y in range(oldh):
+            if 0 <= y + shift < newh:
+                new[x][y + shift] = old[x][y]
+    return new
+
+def resizeworld(newx, newy, width, height):
+    global xpixframe, ypixframe, bigxpixframe, bigypixframe, xframe, yframe, panelx, slidery, sliderend
+    global grid, countgrid, changegrid, forcegrid, backgroundgrid, backgrounddirgrid, screen, overlay
+    shift = newy - ypixframe  # rows are added/removed at the top
+    grid = regrid(grid, xpixframe, ypixframe, newx, newy, air, shift)
+    countgrid = regrid(countgrid, xpixframe, ypixframe, newx, newy, 0, shift)
+    forcegrid = regrid(forcegrid, xpixframe, ypixframe, newx, newy, 0, shift)
+    changegrid = [[1] * newy for _ in range(newx)]  # wake everything up so it settles into the new space
+    backgroundgrid = regrid(backgroundgrid, bigxpixframe, bigypixframe, newx // 10, newy // 10, empty, shift // 10)
+    backgrounddirgrid = regrid(backgrounddirgrid, bigxpixframe, bigypixframe, newx // 10, newy // 10, 0, shift // 10)
+    welcomecircles[:] = [(mx, my + shift * pixelsize) for mx, my in welcomecircles
+                         if border <= my + shift * pixelsize < border + newy * pixelsize and mx < border + newx * pixelsize]
+    moved.clear()
+    xpixframe, ypixframe, bigxpixframe, bigypixframe = newx, newy, newx // 10, newy // 10
+    xframe, yframe = width, height
+    panelx = pixelsize * xpixframe + border * 2
+    slidery = border + pixelsize * ypixframe
+    sliderend = panelx + 180
+    volumey.update(music=slidery - 110, effects=slidery - 60)
+    playbutton.center = (xframe // 2, yframe // 2 + 60)
+    screen = pygame.Surface((xframe, yframe))
+    screen.fill(background)
+    overlay = pygame.Surface((xframe, yframe), pygame.SRCALPHA)
+
+def fitwindow(windoww, windowh):
+    # pick a drawing size with the same shape as the window, then size the world to match
+    global window
+    aspect = windoww / max(1, windowh)
+    if aspect >= basexframe / baseyframe:   # wider than the game: add columns
+        height = baseyframe
+        width = round(height * aspect)
+    else:                                   # taller than the game: add rows
+        width = basexframe
+        height = round(width / aspect)
+    if (width, height) == (xframe, yframe):
+        return
+    newx = max(160, min(maxxpixframe, (width - 2*border - controlsb) // pixelsize // 10 * 10))
+    newy = max(120, min(maxypixframe, (height - 2*border) // pixelsize // 10 * 10))
+    resizeworld(newx, newy, width, height)
+    if web:
+        window = pygame.display.set_mode((width, height))
+        platform.window.window_resize()  # tell the page to re-fit the canvas
+
+windowsize = None
+def checkwindow():
+    # called every frame: notice when the window / browser tab changes size
+    global windowsize
+    if web:
+        size = (platform.window.innerWidth, platform.window.innerHeight)
+    else:
+        size = window.get_size()
+    if size != windowsize:
+        windowsize = size
+        fitwindow(*size)
 clock = pygame.time.Clock()
 gray = (100,100,100)
 yellow = (255,255,0)
@@ -955,7 +1036,10 @@ def updatemusic(mood):
     # time for a new style: start loading one in the background
     if nextmusicstyle is None and len(availablestyles) > 1 and now - stylestart > styleseconds * 1000:
         nextmusicstyle = random.choice([style for style in availablestyles if style != musicstyle])
-        threading.Thread(target=preloadstyle, args=(nextmusicstyle,), daemon=True).start()
+        if sys.platform == "emscripten":
+            preloadstyle(nextmusicstyle)  # no threads in a web browser: load it right away
+        else:
+            threading.Thread(target=preloadstyle, args=(nextmusicstyle,), daemon=True).start()
     if nextmusicstyle is not None and nextmusicstyle in musiclibrary and musiclibrary[nextmusicstyle] is None:
         availablestyles.remove(nextmusicstyle)  # its files were missing; forget it
         del musiclibrary[nextmusicstyle]
@@ -1135,87 +1219,96 @@ for _ in range(4):
     welcomecircle()
 wasdown = False  # was the mouse held last frame (so a click only whooshes once)
 startmusic("menu")  # music starts on the menu and keeps going into the game
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
-            muted = not muted
-            applyeffectvolume()
-        if state == "welcome" and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if playbutton.collidepoint(gamemouse(event.pos)):
-                playsound("chime")
-                startmusic("calm")  # jump straight into the game music (the chime covers the cut)
-                cleargrid()
-                screen.fill(background)
-                state = "playing"
-    if state == "welcome":
-        flipscreen = 1 - flipscreen
-        welcomestep(flipscreen)
-        stretchwelcome()
-        drawwelcome(*gamemouse(pygame.mouse.get_pos()))
-        updatemusic(menumood)
+async def main():
+    # The main loop is async so it can also run in a web browser (pygbag), where the
+    # game has to hand control back to the browser every frame. On desktop it runs the same.
+    global allgrid, brush, checkbrush, effectsvolume, event, flipscreen, interactions, loopname, mightsubstaince, mouse_pos, musicvolume, muted, mx, mxp, my, myp, press, replacecount, replacetype, running, size, state, steammade, substaince, transfernone, volume, wasdown
+    while running:
+        checkwindow()  # reshape the world if the window changed size
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                muted = not muted
+                applyeffectvolume()
+            if state == "welcome" and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if playbutton.collidepoint(gamemouse(event.pos)):
+                    playsound("chime")
+                    startmusic("calm")  # jump straight into the game music (the chime covers the cut)
+                    cleargrid()
+                    screen.fill(background)
+                    state = "playing"
+        if state == "welcome":
+            flipscreen = 1 - flipscreen
+            welcomestep(flipscreen)
+            stretchwelcome()
+            drawwelcome(*gamemouse(pygame.mouse.get_pos()))
+            updatemusic(menumood)
+            present()
+            clock.tick(60)
+            await asyncio.sleep(0)  # let the browser draw the frame
+            continue
+        press = pygame.mouse.get_pressed()
+        loopname = None  # which paint sound should be looping this frame
+        if press[0]:
+            mouse_pos = gamemouse(pygame.mouse.get_pos())
+            mx = (mouse_pos[0])
+            my = (mouse_pos[1])
+            replacetype = substaince
+            mightsubstaince = picksubtype(mx,my)
+            if mightsubstaince != False:
+                if mightsubstaince is not substaince:
+                    playsound("click")
+                substaince = mightsubstaince
+            if substaince.get('background') != False:
+                allgrid = backgroundgrid
+                if not wasdown and mx < panelx:
+                    playsound("whoosh")
+                backgroundpaint(mx,my,replacetype,allgrid)
+            else:
+                size = brush
+                allgrid = grid
+                mxp = ((mx - border) //pixelsize)
+                myp = ((my - border) //pixelsize)
+                replacecount = replacetype.get("lifespam")
+                if replacecount == "none":
+                    replacecount = 0
+                    transfernone = 1
+                else:
+                    transfernone = 0
+                paint(mxp, myp, replacetype, size, allgrid,replacecount,transfernone)
+                if outofbounds(mxp, myp):  # (returns True when inside the grid)
+                    loopname = paintsoundfor(replacetype)
+            volume = volumeclick(mx, my)
+            if volume:
+                if volume[0] == "music":
+                    musicvolume = volume[1]
+                else:
+                    effectsvolume = volume[1]
+                    applyeffectvolume()
+            checkbrush = brushsize(mx,my)
+            if checkbrush != None:
+                if checkbrush != brush:
+                    playsound("click")
+                brush = checkbrush
+        setpaintloop(loopname)
+        wasdown = press[0]
+        if flipscreen ==0:
+            flipscreen =1
+        else:
+            flipscreen =0
+        interactions = 0
+        steammade = 0
+        updategrid(flipscreen)
+        if steammade > 0:
+            playsizzle(steammade)
+        updatemusic(measuremood())
+        updatecountgrid()
+        show()
+        drawpanel(substaince, brush)
         present()
         clock.tick(60)
-        continue
-    press = pygame.mouse.get_pressed()
-    loopname = None  # which paint sound should be looping this frame
-    if press[0]:
-        mouse_pos = gamemouse(pygame.mouse.get_pos())
-        mx = (mouse_pos[0])
-        my = (mouse_pos[1])
-        replacetype = substaince
-        mightsubstaince = picksubtype(mx,my)
-        if mightsubstaince != False:
-            if mightsubstaince is not substaince:
-                playsound("click")
-            substaince = mightsubstaince
-        if substaince.get('background') != False:
-            allgrid = backgroundgrid
-            if not wasdown and mx < panelx:
-                playsound("whoosh")
-            backgroundpaint(mx,my,replacetype,allgrid)
-        else:
-            size = brush
-            allgrid = grid
-            mxp = ((mx - border) //pixelsize)
-            myp = ((my - border) //pixelsize)
-            replacecount = replacetype.get("lifespam")
-            if replacecount == "none":
-                replacecount = 0
-                transfernone = 1
-            else:
-                transfernone = 0
-            paint(mxp, myp, replacetype, size, allgrid,replacecount,transfernone)
-            if outofbounds(mxp, myp):  # (returns True when inside the grid)
-                loopname = paintsoundfor(replacetype)
-        volume = volumeclick(mx, my)
-        if volume:
-            if volume[0] == "music":
-                musicvolume = volume[1]
-            else:
-                effectsvolume = volume[1]
-                applyeffectvolume()
-        checkbrush = brushsize(mx,my)
-        if checkbrush != None:
-            if checkbrush != brush:
-                playsound("click")
-            brush = checkbrush
-    setpaintloop(loopname)
-    wasdown = press[0]
-    if flipscreen ==0:
-        flipscreen =1
-    else:
-        flipscreen =0
-    interactions = 0
-    steammade = 0
-    updategrid(flipscreen)
-    if steammade > 0:
-        playsizzle(steammade)
-    updatemusic(measuremood())
-    updatecountgrid()
-    show()
-    drawpanel(substaince, brush)
-    present()
-    clock.tick(60)
-pygame.quit()
+        await asyncio.sleep(0)  # let the browser draw the frame
+    pygame.quit()
+
+asyncio.run(main())
