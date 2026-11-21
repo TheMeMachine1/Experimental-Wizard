@@ -426,16 +426,11 @@ def showbackground():
                 xbigcenter=xpaint*bigpixelsize+bigcenter
                 ybigcenter=ypaint*bigpixelsize+bigcenter
                 if pixel == blackholew:
-                    pygame.draw.circle(screen,pixel.get('color'),(xbigcenter,ybigcenter),10)
+                    pygame.draw.circle(overlay,pixel.get('color') + (120,),(xbigcenter,ybigcenter),10)
                 else:
-                    if pixel is windcircle or pixel is gravitycircle:  # wind goes on the see-through overlay
-                        target = overlay
-                        color = pixel.get('color') + (120,)
-                        hole = (0,0,0,0)
-                    else:
-                        target = screen
-                        color = pixel.get('color')
-                        hole = background
+                    target = overlay
+                    color = pixel.get('color') + (120,)
+                    hole = (0,0,0,0)
                     pygame.draw.circle(target, color, (xbigcenter,ybigcenter),bigpixelsize//2 -5)
                     direction = backgrounddirgrid[xpaint][ypaint]
                     if 1 <= direction <= 3:
@@ -462,15 +457,11 @@ def showparticle():
             if pixel != air:
                 pygame.draw.rect(screen, pixel.get('color'), (xpaint*pixelsize+border,ypaint*pixelsize+border,pixelsize,pixelsize) )
 
-def show(backfirst):
+def show():
     pygame.draw.rect(screen,background,(border,border,xpixframe*pixelsize,ypixframe*pixelsize))
     overlay.fill((0,0,0,0))
-    if backfirst == True:
-        showparticle()
-        showbackground()
-    else:
-        showbackground()
-        showparticle()
+    showbackground()
+    showparticle()
     screen.blit(overlay,(0,0))
 
 def backgroundpaint(mx,my,replacetype,allgrid):
@@ -718,8 +709,7 @@ while running:
         flipscreen =0
     updategrid(flipscreen)
     updatecountgrid()
-    backfirst = False
-    show(backfirst)
+    show()
     drawpanel(substaince, brush)
     pygame.display.flip()
     clock.tick(60)
