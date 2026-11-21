@@ -81,7 +81,7 @@ redsand = {"color": (255, 140, 90), "move": "powder", "background":False, "lifes
            "density": 2}
 magicpowder = {"color": (200, 200, 255), "move": "powder", "background":False, "lifespam":"none", "interactionamount":3, "interactiontype1":["lava","redsand","air"],  "interactiontype2":["acid","greensand","air"],  "interactiontype3":["water","bluesand","air"],
            "density": 2}
-magic = {"color": (50, 50, 80), "move": "random", "background":False, "lifespam":"none", "interactionamount":3, "interactiontype1":["lava","fire","lava"], "interactiontype2":["fire","fire","fire"], "interactiontype3":["buble","water","buble"], "interactiontype4":["quake","quake","quake"],
+magic = {"color": (50, 50, 80), "move": "random", "background":False, "lifespam":"none", "interactionamount":4, "interactiontype1":["lava","fire","lava"], "interactiontype2":["fire","fire","fire"], "interactiontype3":["buble","water","buble"], "interactiontype4":["quake","quake","quake"],
            "density": 0.1}
 wood = {"color": (150, 75, 0), "move": "solid", "background":False, "lifespam":"none", "interactionamount":2, "interactiontype1":["acid","life","life"], "interactiontype2":["fire","fire","coal"],
            "density": 10}
