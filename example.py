@@ -4,8 +4,9 @@ import math
 import array
 import os
 import sys
-import threading
 import asyncio
+
+import music  # music.py: the adaptive music
 
 # CD-quality stereo (for the music). Small buffer on desktop so effects play instantly; a bigger one in a
 # web browser, where sound is mixed on the same thread as the game and a small buffer crackles on slow frames.
@@ -873,59 +874,6 @@ def makesound(track, volume):
 def randomtimes(persecond, length):
     return [random.uniform(0, length) for _ in range(int(persecond*length))]
 
-# ---------- adaptive music ----------
-# The music lives in music/<style>/<section>_<layer>.ogg (made by tools/make_music.py).
-# A section is 8 bars and has five layers that loop in sync. All five layers always play;
-# their volumes follow what's on screen (see updatemusic), and the next section is picked when
-# the current one ends, so changes land on the beat. Every couple of minutes the whole style changes.
-musicstyles = ["orchestral", "lofi", "retro", "arcane", "alchemy"]
-musicsections = ["menu", "calm", "busy", "intense"]
-musiclayers = ["pad", "arp", "drums", "sparkle", "melody"]
-styleseconds = 120     # how long one style plays before switching to another
-availablestyles = []   # styles whose files exist
-musiclibrary = {}      # style -> its tracks (only the current style, plus the next one while it loads)
-musictracks = {}       # tracks of the current style: (section, layer) -> Sound
-musicstyle = None
-
-def musicfolder(style):
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "music", style)
-
-def loadstyle(style):
-    # returns {(section, layer): Sound}, or None if the files are missing
-    tracks = {}
-    for section in musicsections:
-        padpath = os.path.join(musicfolder(style), section + "_pad.ogg")
-        if not os.path.exists(padpath):
-            return None
-        pad = pygame.mixer.Sound(padpath)
-        for layer in musiclayers:
-            path = os.path.join(musicfolder(style), section + "_" + layer + ".ogg")
-            if os.path.exists(path):
-                tracks[(section, layer)] = pygame.mixer.Sound(path)
-            else:  # e.g. no drums on the menu: silence of the same length keeps the layers in sync
-                tracks[(section, layer)] = pygame.mixer.Sound(buffer=bytes(len(pad.get_raw())))
-    return tracks
-
-def preloadstyle(style):
-    # runs in a background thread so loading the next style doesn't freeze the game
-    musiclibrary[style] = loadstyle(style)
-
-def loadmusic():
-    # pick a random style to start with and load it
-    global musictracks, musicstyle
-    for style in musicstyles:
-        if os.path.isdir(musicfolder(style)):
-            availablestyles.append(style)
-    random.shuffle(availablestyles)
-    for style in list(availablestyles):
-        tracks = loadstyle(style)
-        if tracks:
-            musicstyle = style
-            musictracks = tracks
-            musiclibrary[style] = tracks
-            return
-        availablestyles.remove(style)
-
 def bubble(freq, length):
     # one lava "bloop": the pitch jumps up as the bubble pops, and it dies away fast
     out, phase, n = [], 0.0, int(length*soundrate)
@@ -982,110 +930,11 @@ if pygame.mixer.get_init() and pygame.mixer.get_init()[1] == -16:
                                                 [v*0.3 for v in noise(1, 0.03)]), 0.35))
     addsound("powder", 0.35, lambda: makesound([v * (0.7 + 0.3*math.sin(2*math.pi*7*i/soundrate)) for i, v in enumerate(noise(1, 0.6))], 0.15))
     addsound("magic", 0.4, lambda: makesound(scatter(tone(random.uniform(1800, 3500), 0.15, 30), randomtimes(15, 1), 1), 0.2))
-    loadmusic()
+    music.load()
 
 musicvolume = 0.6     # music volume, 0 to 1 (Music slider)
 effectsvolume = 1.0   # sound effects volume, 0 to 1 (Effects slider)
 muted = False         # M key turns all sound off/on
-musicchannels = []  # one mixer channel per layer
-musicsection = "menu"
-queuedsection = None     # section waiting to play after the current one
-queuedstyle = None       # ...and which style it's from
-stylestart = 0           # when the current style started (milliseconds)
-nextmusicstyle = None    # style being loaded / waiting to take over
-layerlevels = {layer: 0.0 for layer in musiclayers}
-
-def startmusic(section):
-    # (re)start all layers together at the beginning of a section
-    global musicchannels, musicsection, queuedsection, queuedstyle
-    if not musictracks:
-        return
-    if not musicchannels:
-        pygame.mixer.set_num_channels(16)
-        pygame.mixer.set_reserved(len(musiclayers))  # keep these channels for music only
-        musicchannels = [pygame.mixer.Channel(i) for i in range(len(musiclayers))]
-    for channel, layer in zip(musicchannels, musiclayers):
-        channel.play(musictracks[(section, layer)])
-    musicsection = section
-    queuedsection = None  # updatemusic queues the next one
-    queuedstyle = None
-
-def pickmusicsection(mood):
-    if mood["menu"]:
-        return "menu"
-    if mood["reactions"] > 0.8 or mood["hot"] > 1500:
-        return "intense"
-    if mood["moving"] > 400 or mood["hot"] > 300:
-        return "busy"
-    return "calm"
-
-def layertargets(mood):
-    # how loud each layer should be right now (0 to 1)
-    if mood["menu"]:
-        return {"pad": 1, "arp": 0.6, "drums": 0, "sparkle": 0.7, "melody": 0.8}
-    return {
-        "pad": 1,
-        "melody": 0.85,
-        "arp": 0.3 + min(0.7, mood["moving"] / 800),
-        "drums": min(1, mood["reactions"] / 3 + mood["hot"] / 4000 + mood["moving"] / 2000),
-        "sparkle": min(1, 0.15 + mood["circles"] / 2),
-    }
-
-def queuenext(mood):
-    # Keep the next section queued on every layer. The mixer starts it the instant the current
-    # one ends, so there's no gap and no guessing about timing. If the mood changes, the queued
-    # section is swapped for a better fit.
-    global queuedsection, queuedstyle
-    section = pickmusicsection(mood)
-    style = musicstyle
-    if nextmusicstyle is not None and musiclibrary.get(nextmusicstyle):
-        style = nextmusicstyle  # the next style has finished loading: switch at this boundary
-    if (section, style) != (queuedsection, queuedstyle):
-        for channel, layer in zip(musicchannels, musiclayers):
-            channel.queue(musiclibrary[style][(section, layer)])
-        queuedsection = section
-        queuedstyle = style
-
-def updatemusic(mood):
-    global musicsection, queuedsection, queuedstyle
-    global musicstyle, musictracks, stylestart, nextmusicstyle
-    if not musicchannels:
-        return
-    now = pygame.time.get_ticks()
-    # time for a new style: start loading one in the background
-    if nextmusicstyle is None and len(availablestyles) > 1 and now - stylestart > styleseconds * 1000:
-        nextmusicstyle = random.choice([style for style in availablestyles if style != musicstyle])
-        if sys.platform == "emscripten":
-            preloadstyle(nextmusicstyle)  # no threads in a web browser: load it right away
-        else:
-            threading.Thread(target=preloadstyle, args=(nextmusicstyle,), daemon=True).start()
-    if nextmusicstyle is not None and nextmusicstyle in musiclibrary and musiclibrary[nextmusicstyle] is None:
-        availablestyles.remove(nextmusicstyle)  # its files were missing; forget it
-        del musiclibrary[nextmusicstyle]
-        nextmusicstyle = None
-        stylestart = now
-    # the queued section has started playing (the queue slot is empty again)
-    if queuedsection is not None and musicchannels[0].get_queue() is None:
-        musicsection = queuedsection
-        if queuedstyle != musicstyle:
-            del musiclibrary[musicstyle]  # free the old style's memory
-            musicstyle = queuedstyle
-            musictracks = musiclibrary[musicstyle]
-            nextmusicstyle = None
-            stylestart = now
-        queuedsection = None
-        queuedstyle = None
-    # if the music really ran out (nothing playing AND nothing queued), start again.
-    # (Not busy but still queued just means the mixer is about to start the queued section.)
-    if not musicchannels[0].get_busy() and musicchannels[0].get_queue() is None:
-        startmusic(pickmusicsection(mood))
-    queuenext(mood)
-    # fade each layer toward its target (about a second to get there)
-    targets = layertargets(mood)
-    for channel, layer in zip(musicchannels, musiclayers):
-        layerlevels[layer] += (targets[layer] - layerlevels[layer]) * 0.03
-        channel.set_volume(0 if muted else layerlevels[layer] * musicvolume)
-
 reactheat = 0.0  # reactions per frame, smoothed so one sizzle doesn't flip the mood
 hotcount = 0     # fire + lava cells (counted every few frames)
 moodframe = 0
@@ -1105,6 +954,10 @@ def measuremood():
     }
 
 menumood = {"menu": True}
+
+def musiclevel():
+    # the Music slider, or 0 when muted
+    return 0 if muted else musicvolume
 
 def effectlevel(name):
     # how loud an effect should play: its own level x the Effects slider (0 when muted)
@@ -1237,7 +1090,7 @@ makewindgrid()
 for _ in range(4):
     welcomecircle()
 wasdown = False  # was the mouse held last frame (so a click only whooshes once)
-startmusic("menu")  # music starts on the menu and keeps going into the game
+music.start("menu")  # music starts on the menu and keeps going into the game
 async def main():
     # The main loop is async so it can also run in a web browser (pygbag), where the
     # game has to hand control back to the browser every frame. On desktop it runs the same.
@@ -1253,7 +1106,7 @@ async def main():
             if state == "welcome" and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if playbutton.collidepoint(gamemouse(event.pos)):
                     playsound("chime")
-                    startmusic("calm")  # jump straight into the game music (the chime covers the cut)
+                    music.start("calm")  # jump straight into the game music (the chime covers the cut)
                     cleargrid()
                     screen.fill(background)
                     state = "playing"
@@ -1262,7 +1115,7 @@ async def main():
             welcomestep(flipscreen)
             stretchwelcome()
             drawwelcome(*gamemouse(pygame.mouse.get_pos()))
-            updatemusic(menumood)
+            music.update(menumood, musiclevel())
             present()
             clock.tick(60)
             await asyncio.sleep(0)  # let the browser draw the frame
@@ -1321,7 +1174,7 @@ async def main():
         updategrid(flipscreen)
         if steammade > 0:
             playsizzle(steammade)
-        updatemusic(measuremood())
+        music.update(measuremood(), musiclevel())
         updatecountgrid()
         show()
         drawpanel(substaince, brush)
