@@ -478,16 +478,11 @@ def showbackground():
                 xbigcenter=xpaint*bigpixelsize+bigcenter
                 ybigcenter=ypaint*bigpixelsize+bigcenter
                 if pixel == blackholew:
-                    pygame.draw.circle(screen,pixel.get('color'),(xbigcenter,ybigcenter),10)
+                    pygame.draw.circle(overlay,pixel.get('color') + (120,),(xbigcenter,ybigcenter),10)
                 else:
-                    if pixel is windcircle:  # wind goes on the see-through overlay
-                        target = overlay
-                        color = pixel.get('color') + (120,)
-                        hole = (0,0,0,0)
-                    else:
-                        target = screen
-                        color = pixel.get('color')
-                        hole = background
+                    target = overlay
+                    color = pixel.get('color') + (120,)
+                    hole = (0,0,0,0)
                     pygame.draw.circle(target, color, (xbigcenter,ybigcenter),bigpixelsize//2 -5)
                     direction = backgrounddirgrid[xpaint][ypaint]
                     if 1 <= direction <= 3:
@@ -1163,11 +1158,6 @@ while running:
         present()
         clock.tick(60)
         continue
-    keys = pygame.key.get_pressed()
-    if pygame.key.get_just_pressed:
-        mouse_pos = gamemouse(pygame.mouse.get_pos())
-        mx = (mouse_pos[0])
-        my = (mouse_pos[1])
     press = pygame.mouse.get_pressed()
     loopname = None  # which paint sound should be looping this frame
     if press[0]:
